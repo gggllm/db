@@ -1,4 +1,4 @@
-const fs = require('fs')
+const fs = require('fs');
 const readline = require('readline');
 
 
@@ -11,4 +11,4 @@ function readFileByLine(path) {
     })
 }
 
-module.exports = readFileByLine
+module.exports = readFileByLine;
