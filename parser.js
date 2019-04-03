@@ -17,7 +17,7 @@ function parse_from() {
 }
 
 function parse_where(where) {
-    return _.trim(where).split(',')
+    return _.trim(where).split(/,\s*/)
 }
 
 function parse_final(final) {

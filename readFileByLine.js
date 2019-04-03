@@ -3,7 +3,7 @@ const readline = require('readline');
 
 
 function readFileByLine(path) {
-    let readStream = fs.createReadStream(path, {encoding: 'utf-8'});
+    let readStream = fs.createReadStream(path);
 
     return readline.createInterface({
         input: readStream,
