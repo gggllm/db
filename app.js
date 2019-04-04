@@ -4,8 +4,8 @@ const Stream = require('stream');
 const readFileByLine = require('./readFileByLine');
 // multiply by 4 to make sure it can fit by integer without padding
 const block_size = (fs.statSync('./app.js').blksize || 4096);
-const buffer_size = block_size * 4;
-const path = './pa3_data/data/s/A.csv';
+const buffer_size = block_size * 4000;
+const path = './pa3_data/data/m/A.csv';
 
 let start = new Date().getTime();
 
