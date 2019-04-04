@@ -6,34 +6,71 @@ const readFileByLine = require('./readFileByLine');
 const block_size = (fs.statSync('./app.js').blksize || 4096);
 const buffer_size = block_size * 4;
 
-const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
+const letter = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"];
 
-for (let i = 0; i < 17; i++) {
+if (!fs.existsSync('./test')) {
+    fs.mkdirSync('./test/');
+}
+let columnNumberDict = {};
+let inMemoryDataBase = {};
+
+for (let i = 0; i < 16; i++) {
     build(letter[i])
 }
 
+
 function build(num) {
-    let path = `./pa3_data/data/L/${num}.csv`;
+    let path = `./pa3_data/data/m/${num}.csv`;
+
+    let write;
+
+    let wl;
+    if (fs.statSync(path).size < 5000000) {
+        let ds = [];
+        inMemoryDataBase[num] = ds;
+        let index = 0;
+        let cur = [];
+        write = (item) => {
+            cur.push(item);
+            index++;
+            index = index % columnNumber;
+            if (index === 0) {
+                cur = [];
+                ds.push(cur)
+            }
+        }
+    } else {
+        wl = fs.createWriteStream(`./test/test${num}.bin`);
+        write = function (item) {
+            buf.writeInt32LE(item, bufferIndex);
+            bufferIndex += 4;
+            if (bufferIndex + 4 >= buffer_size) {
+                wl.write(buf);
+                bufferIndex = 0
+            }
+        }
+    }
     let start = new Date().getTime();
 
     let rl = readFileByLine(path);
-    let wl = fs.createWriteStream(`./test/test${num}.bin`);
 
 // use buffer to write one block at a time
     let buf = Buffer.allocUnsafe(buffer_size);
 
     let bufferIndex = 0;
 
-    function write(wl, item) {
-        buf.writeInt32LE(item, bufferIndex);
-        bufferIndex += 4;
-        if (bufferIndex + 4 >= buffer_size) {
-            wl.write(buf);
-            bufferIndex = 0
-        }
-    }
 
+    let columnNumber = 0;
     rl.on('line', (line) => {
+        if (columnNumber === 0) {
+            columnNumber = 1;
+            for (let i = 0; i < line.length; i++) {
+                if (line.charAt(i === ',')) {
+                    columnNumber++
+                }
+            }
+            columnNumberDict[path] = columnNumber
+        }
         let length = line.length;
         let acc = 0;
         let flag = 1;
@@ -42,7 +79,7 @@ function build(num) {
         for (let i = 0; i < length; i++) {
             let ch = line.charAt(i);
             if (ch === ',') {
-                write(wl, acc * flag);
+                write(acc * flag);
                 acc = 0;
                 flag = 1
             } else if (ch === '-') {
@@ -51,13 +88,13 @@ function build(num) {
                 acc = acc * 10 + (ch - 0)
             }
         }
-        write(wl, acc * flag)
+        write(acc * flag)
     });
 
 
     rl.on('close', () => {
         //console.log(new Date().getTime() - start)
-        wl.write(buf.slice(0, bufferIndex), () => {
+        wl && wl.write(buf.slice(0, bufferIndex), () => {
             wl.close();
             console.log(new Date().getTime() - start)
         })
