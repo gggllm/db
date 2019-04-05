@@ -25,7 +25,7 @@ function build(num) {
     let write;
 
     let wl;
-    if (fs.statSync(path).size < 5000000) {
+    if (fs.statSync(path).size < 501732673) {
         let ds = [];
         inMemoryDataBase[num] = ds;
         let index = 0;
@@ -35,8 +35,8 @@ function build(num) {
             index++;
             index = index % columnNumber;
             if (index === 0) {
-                cur = [];
                 ds.push(cur)
+                cur = [];
             }
         }
     } else {
