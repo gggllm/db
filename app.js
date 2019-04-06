@@ -1,6 +1,6 @@
 const _ = require('lodash');
 const fs = require('fs');
-const Stream = require('stream');
+const get = require('./read')
 const readFileByLine = require('./readFileByLine');
 // multiply by 4 to make sure it can fit by integer without padding
 const block_size = (fs.statSync('./app.js').blksize || 4096);
@@ -112,24 +112,4 @@ function build(table_name) {
             })
         })
     });
-}
-
-function readFromFile(table, col) {
-    return fs.createReadStream(`./test/${table}${col}.bin`, {encoding: 'buffer'})
-}
-
-function get(table, col, cb) {
-    if (inMemoryDataBase[table]) {
-        return _(inMemoryDataBase[table]).map(col).forEach(cb)
-    } else {
-        let rl = readFromFile(table, col);
-        let count = 0;
-        rl.on('data', () => {
-            let buf = this.readInt32LE();
-            while (buf) {
-                cb(buf, count++);
-                buf = this.readInt32LE()
-            }
-        })
-    }
 }
