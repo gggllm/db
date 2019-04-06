@@ -12,6 +12,7 @@ if (!fs.existsSync('./test')) {
     fs.mkdirSync('./test/');
 }
 let columnNumberDict = {};
+let cardinalityDict = {};
 let inMemoryDataBase = {};
 
 for (let i = 0; i < 17; i++) {
@@ -44,7 +45,7 @@ function build(table_name) {
         write = function (item, index) {
             let buf = bufArray[index];
             let wl = wlArray[index];
-            let bufferIndex = bufferIndexArray[index]
+            let bufferIndex = bufferIndexArray[index];
             buf.writeInt32LE(item, bufferIndex);
             bufferIndex += 4;
             if (bufferIndex + 4 >= buffer_size) {
@@ -62,7 +63,9 @@ function build(table_name) {
 
 
     let columnNumber = 0;
+    let lineNumber = 0;
     rl.on('line', (line) => {
+        lineNumber++;
         if (columnNumber === 0) {
             columnNumber = 1;
             for (let i = 0; i < line.length; i++) {
@@ -82,7 +85,7 @@ function build(table_name) {
         let acc = 0;
         let flag = 1;
 
-        let column = 0
+        let column = 0;
         for (let i = 0; i < length; i++) {
             let ch = line.charAt(i);
             if (ch === ',') {
@@ -100,6 +103,7 @@ function build(table_name) {
 
 
     rl.on('close', () => {
+        cardinalityDict[table_name] = lineNumber;
         //console.log(new Date().getTime() - start)
         wlArray.length && wlArray.forEach((wl, index) => {
             wl.write(bufArray[index].slice(0, bufferIndexArray[index]), () => {
@@ -108,4 +112,24 @@ function build(table_name) {
             })
         })
     });
+}
+
+function readFromFile(table, col) {
+    return fs.createReadStream(`./test/${table}${col}.bin`, {encoding: 'buffer'})
+}
+
+function get(table, col, cb) {
+    if (inMemoryDataBase[table]) {
+        return _(inMemoryDataBase[table]).map(col).forEach(cb)
+    } else {
+        let rl = readFromFile(table, col);
+        let count = 0;
+        rl.on('data', () => {
+            let buf = this.readInt32LE();
+            while (buf) {
+                cb(buf, count++);
+                buf = this.readInt32LE()
+            }
+        })
+    }
 }
