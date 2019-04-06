@@ -1,6 +1,8 @@
 const _ = require('lodash');
 const fs = require('fs');
-const get = require('./read')
+const {get, write} = require('./util');
+const parse = require('./parser');
+const optimize = require('./optimizer');
 const readFileByLine = require('./readFileByLine');
 // multiply by 4 to make sure it can fit by integer without padding
 const block_size = (fs.statSync('./app.js').blksize || 4096);
@@ -11,8 +13,7 @@ const letter = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
 if (!fs.existsSync('./test')) {
     fs.mkdirSync('./test/');
 }
-let columnNumberDict = {};
-let cardinalityDict = {};
+let metaDict = {};
 let inMemoryDataBase = {};
 
 for (let i = 0; i < 17; i++) {
@@ -64,6 +65,8 @@ function build(table_name) {
 
     let columnNumber = 0;
     let lineNumber = 0;
+    let metaData = {};
+    metaDict[path] = metaData;
     rl.on('line', (line) => {
         lineNumber++;
         if (columnNumber === 0) {
@@ -73,7 +76,7 @@ function build(table_name) {
                     columnNumber++
                 }
             }
-            columnNumberDict[path] = columnNumber;
+            metaData.col = columnNumber;
             for (let i = 0; i < columnNumber; i++) {
                 let wl = fs.createWriteStream(`./test/${table_name}${i}.bin`);
                 wlArray.push(wl);
@@ -103,7 +106,7 @@ function build(table_name) {
 
 
     rl.on('close', () => {
-        cardinalityDict[table_name] = lineNumber;
+        metaData.size = lineNumber;
         //console.log(new Date().getTime() - start)
         wlArray.length && wlArray.forEach((wl, index) => {
             wl.write(bufArray[index].slice(0, bufferIndexArray[index]), () => {
@@ -112,4 +115,51 @@ function build(table_name) {
             })
         })
     });
+}
+
+function query(input) {
+    let [select, from, where, filter] = parse(input);
+    // get the join sequence and tables that is needed for extraction
+    let {joins, tables} = optimize(select, from, where, filter, metaDict);
+    let acc = {};
+    let joinNum = 0
+    join(joins[joinNum++])
+
+    function join({tableName, tableName2, column, column2}) {
+        // make sure table 1 is smaller then table 2
+        if (metaDict[tableName] > metaDict[tableName2]) {
+            let i = tableName;
+            tableName = tableName2;
+            tableName2 = i;
+            i = column;
+            column = column2;
+            column2 = i
+        }
+        let db1 = new Map();
+        let db2 = new Map();
+        get(tableName, column, (value, index) => {
+            let list = db1.get(value) || [];
+            list.push(index);
+            db1.set(value, list)
+        }, inMemoryDataBase, () => {
+            get(tableName2, column2, (value, index) => {
+                // if found the target, we just store the relationship we need
+                if (db1.get(value)) {
+                    let list = db2.get(value) || [];
+                    list.push(index);
+                    db2.set(value, list)
+                }// if no same drop
+            }, inMemoryDataBase, () => {
+                // build a filtered db1
+                let ndb1 = new Map();
+                for ({key, value} of db1) {
+                    if (db2.has(key)) {
+                        ndb1.set(key, value)
+                    }
+                }
+
+                join(joins[joinNum++])
+            })
+        })
+    }
 }

@@ -1,8 +1,8 @@
 const _ = require('lodash');
 
 function parse(input) {
-    let select, from, where, final;
-    [select, from, where, final] = input.split(/\n\s*/);
+    let select, from, where, filter;
+    [select, from, where, filter] = input.split(/\n\s*/);
     select = parse_select(select).map((value) => {
         return [value.substr(4, 1), parseInt(value.substring(7, value.length - 1))]
     });
@@ -22,7 +22,7 @@ function parse(input) {
 
         return [firstTable, firstColumn, secondTable, parseInt(value.substring(i + 7, value.length - 1))]
     });
-    final = parse_final(final).map((value) => {
+    filter = parse_filter(filter).map((value) => {
         let firstTable = value.substr(0, 1);
         value = value.substr(3);
         let firstColumn;
@@ -38,7 +38,8 @@ function parse(input) {
         return [firstTable, firstColumn, operator, parseInt(value.substring(i + 3, value.length))]
     });
 
-    console.log(select, from, where, final)
+    //console.log(select, from, where, filter)
+    return [select, from, where, filter]
 }
 
 // parse(`SELECT SUM(D.c0), SUM(D.c4), SUM(C.c1)
@@ -87,7 +88,7 @@ function parse_where(where) {
 
 //console.log(parse_where('WHERE A.c1 = B.c0 AND A.c3 = D.c0 AND C.c2 = D.c2'))
 
-function parse_final(final) {
+function parse_filter(final) {
     let regex = /\w\.c\d+\s[=><]\s-*\d+/;
     let match;
     let result = [];
@@ -98,4 +99,6 @@ function parse_final(final) {
     return result
 }
 
-//console.log(parse_final('AND A.c4 = -9868;'))
+//console.log(parse_filter('AND A.c4 = -9868;'))
+
+module.exports = parse
