@@ -6,7 +6,9 @@ const optimize = require('./optimizer');
 const readFileByLine = require('./readFileByLine');
 // multiply by 4 to make sure it can fit by integer without padding
 const block_size = (fs.statSync('./app.js').blksize || 4096);
-const buffer_size = block_size * 400;
+const buffer_size = block_size * 4;
+
+let start = new Date().getTime();
 
 const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
 
@@ -15,14 +17,38 @@ if (!fs.existsSync('./test')) {
 }
 let metaDict = {};
 let inMemoryDataBase = {};
-let buildCount = 0
-for (let i = 0; i < 16; i++) {
-    build(letter[i])
-}
+let buildCount = 0;
 
 
-function build(table_name) {
-    let path = `./pa3_data/data/m/${table_name}.csv`;
+let readline = require('readline');
+let rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: false
+});
+let lineCount = 0;
+let total;
+let q = '';
+rl.on('line', function (line) {
+    lineCount++;
+    if (lineCount === 0) {
+        //build index
+        line.split(',').forEach((path, index) => {
+            build(path, letter[index])
+        })
+    } else if (lineCount === 1) {
+        total = parseInt(line)
+    } else {
+        q += '\n' + line;
+        if (lineCount % 4 === 1) {
+            query(q);
+            q = ''
+        }
+    }
+});
+
+
+function build(path, tableName) {
 
     let write;
     let bufArray = [];
@@ -30,7 +56,7 @@ function build(table_name) {
     let bufferIndexArray = [];
     if (fs.statSync(path).size < 5017326) {
         let ds = [];
-        inMemoryDataBase[table_name] = ds;
+        inMemoryDataBase[tableName] = ds;
         let index = 0;
         let cur = [];
         write = (item) => {
@@ -49,14 +75,15 @@ function build(table_name) {
             let bufferIndex = bufferIndexArray[index];
             buf.writeInt32LE(item, bufferIndex);
             bufferIndex += 4;
-            if (bufferIndex + 4 >= buffer_size) {
-                wl.write(buf);
+            // can be done using ==== because we manually set it to 4 times
+            if (bufferIndex === buffer_size) {
+                wl.write(buf, 'binary');
+                bufArray[index] = Buffer.allocUnsafe(buffer_size);
                 bufferIndex = 0
             }
             bufferIndexArray[index] = bufferIndex
         }
     }
-    let start = new Date().getTime();
 
     let rl = readFileByLine(path);
 
@@ -64,10 +91,10 @@ function build(table_name) {
 
 
     let columnNumber = 0;
-    let columnFinishCount=0
+    let columnFinishCount = 0;
     let lineNumber = 0;
     let metaData = {};
-    metaDict[path] = metaData;
+    metaDict[tableName] = metaData;
     rl.on('line', (line) => {
         lineNumber++;
         if (columnNumber === 0) {
@@ -79,7 +106,7 @@ function build(table_name) {
             }
             metaData.col = columnNumber;
             for (let i = 0; i < columnNumber; i++) {
-                let wl = fs.createWriteStream(`./test/${table_name}${i}.bin`);
+                let wl = fs.createWriteStream(`./test/${tableName}${i}.bin`, {encoding: 'binary'});
                 wlArray.push(wl);
                 bufArray.push(Buffer.allocUnsafe(buffer_size));
                 bufferIndexArray.push(0)
@@ -110,18 +137,15 @@ function build(table_name) {
         metaData.size = lineNumber;
         //console.log(new Date().getTime() - start)
         wlArray.length && wlArray.forEach((wl, index) => {
-            wl.end(bufArray[index].slice(0, bufferIndexArray[index]),'binary', () => {
-                columnFinishCount++
-                if(columnFinishCount=== columnNumber){
-                    buildCount++
-                    if (buildCount === 16) {
-                        console.log(new Date().getTime() - start)
-                        query(`SELECT SUM(A.c26), SUM(A.c22), SUM(A.c43), SUM(A.c25)
-                               FROM A, J, B, K
-                               WHERE A.c9 = J.c0 AND A.c1 = B.c0 AND A.c10 = K.c0
-                                 AND A.c16 > -4899;`)
-                    }
-                }
+            wl.end(bufArray[index].slice(0, bufferIndexArray[index]), 'binary', () => {
+                // columnFinishCount++;
+                // if (columnFinishCount === columnNumber) {
+                //     buildCount++;
+                //     if (buildCount === 16) {
+                //         //console.log(new Date().getTime() - start)
+                //
+                //     }
+                // }
             })
         })
     });
@@ -130,15 +154,15 @@ function build(table_name) {
 function query(input) {
     let [select, from, where, filter] = parse(input);
     // get the join sequence and tables that is needed for extraction
-    let {joins, tables, tableIndex,filterByTable} = optimize(select, from, where, filter, metaDict);
+    let {joins, tables, tableIndex, filterByTable} = optimize(select, from, where, filter, metaDict);
     let acc, accIndex = {}, accLength = 0;
     let joinNum = 0;
-    console.log(select, joins, tables, tableIndex,filterByTable,filter)
+    //console.log(select, joins, tables, tableIndex, filterByTable, filter)
     join(joins[joinNum++]);
 
     function next() {
         if (joinNum < joins.length) {
-            console.log(accIndex)
+            //console.log(acc.length, accIndex)
             join(joins[joinNum++])
         } else {
             // do the fucking sum!
@@ -146,7 +170,12 @@ function query(input) {
                 let index = accIndex[table][col];
                 return _(acc).map(index).sum()
             });
-            console.log(res)
+            //console.log(new Date().getTime() - start)
+            rl.write(res);
+            total--;
+            if (total === 0) {
+                rl.close()
+            }
         }
     }
 
@@ -161,7 +190,7 @@ function query(input) {
     }
 
     function join({tableName, tableName2, column, column2}) {
-        console.log(tableName, tableName2)
+        //console.log(tableName, tableName2)
         if (accIndex[tableName] || accIndex[tableName2]) {
             // make sure table1 is in the acc
             if (!accIndex[tableName]) {
@@ -208,7 +237,7 @@ function query(input) {
 
             get(tableName, tables[tableName], (value, index) => {
                 //console.log(value)
-                let val=value[column]
+                let val = value[column];
                 let list = db1.get(val) || [];
                 list.push(value);
                 db1.set(val, list)

@@ -2,7 +2,9 @@ const _ = require("lodash");
 const fs = require('fs');
 
 function readFromFile(table, col) {
-    return fs.createReadStream(`./test/${table}${col}.bin`)
+    let path = `./test/${table}${col}.bin`
+    //console.log(fs.statSync(path).size)
+    return fs.createReadStream(path)
 }
 
 // cb is for streaming purpose
@@ -10,12 +12,8 @@ function readFromFile(table, col) {
 
 function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
     if (inMemoryDataBase[table]) {
-        console.log(`search ${table} in memory`);
-        _(inMemoryDataBase[table]).map((value) => {
-            return colums.map((column => {
-                return value[column]
-            }))
-        }).filter((row) => {
+        //console.log(`search ${table} in memory`);
+        _(inMemoryDataBase[table]).filter((row) => {
             for (let i in filters) {
                 let [column, filter] = filters[i]
                 if (!filter(row[column])) {
@@ -23,6 +21,10 @@ function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
                 }
             }
             return true
+        }).map((value) => {
+            return colums.map((column => {
+                return value[column]
+            }))
         }).forEach(cb);
         cb2 && cb2()
     } else {
@@ -39,13 +41,13 @@ function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
             let colFilters = _.map(filters[col], 1);
             let lastChunk
             rl.on('data', (chunk) => {
-                if(lastChunk){
-                    chunk=Buffer.concat([lastChunk,chunk])
+                if (lastChunk && lastChunk.length !== 0) {
+                    chunk = Buffer.concat([lastChunk, chunk])
                 }
                 let cursor = 0;
-                let buf;
+                let value;
                 while (cursor + 4 <= chunk.length) {
-                    buf = chunk.readInt32LE(cursor);
+                    value = chunk.readInt32LE(cursor);
                     cursor += 4;
                     if (drop[rowNumber]) {
                         //console.log('drop')
@@ -54,7 +56,7 @@ function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
                     }
                     let dropFlag = false;
                     for (let filter of colFilters) {
-                        if (!filter(buf)) {
+                        if (!filter(value)) {
                             dropFlag = true;
                             break
                         }
@@ -70,20 +72,20 @@ function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
                     db[rowNumber] = row;
                     let size = sizeArray[rowNumber] || 0;
                     sizeArray[rowNumber] = ++size;
-                    row[index] = buf;
-                    rowNumber++;
+                    row[index] = value;
                     if (size === columnNumber) {
                         //console.log(row);
                         cb(row);
-                        db[rowNumber - 1] = null //delete the finished row
+                        db[rowNumber] = null //delete the finished row
                     }
+                    rowNumber++;
                 }
-                lastChunk=chunk.slice(cursor)
+                lastChunk = chunk.slice(cursor)
             });
             rl.on('end', () => {
                 finished++;
                 if (finished === columnNumber) {
-                    console.log('finished loading data from disk');
+                    //console.log('finished loading data from disk');
                     cb2 && cb2()
                 }
             })
