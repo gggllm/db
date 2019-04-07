@@ -1,4 +1,4 @@
-const _ = require('lodash')
+const _ = require('lodash');
 
 function estimateCardinality() {
 
@@ -23,15 +23,45 @@ function optimize(select, from, where, filter, tableMetaData) {
             tableName, tableName2, column, column2
         })
     }));
-    filter.forEach((([tableName, column, ...rest]) => {
+    let filterByTable = {};
+    filter.forEach((([tableName, column, operator, target]) => {
         let table = tables[tableName] || new Set();
         tables[tableName] = table;
-        table.add(column)
+        table.add(column);
+        let filters = filterByTable[tableName] || [];
+        filterByTable[tableName] = filters
+        switch (operator) {
+            case '<':
+                filters.push([column, (value) => {
+                    return value < target
+                }])
+                break
+            case '=':
+                filters.push([column, (value) => {
+                    return value === target
+                }])
+                break
+            case '>':
+                filters.push([column, (value) => {
+                    return value > target
+                }])
+        }
     }));
-    _.sortBy(joins, ({tableName, tableName2, column, column2}) => {
-        return Math.min(tableMetaData[tableName].size, tableMetaData[tableName2].size)
-    });
-    return {joins, tables}
+    // store the column's position in the resulting row
+    let tableIndex = {};
+    for ({key, value}of tables) {
+        let index = {};
+        tableIndex[key] = index;
+        let array = Array(value);
+        array.sort((a, b) => a > b);
+        array.forEach((value, index) => {
+            index[value] = index
+        })
+    }
+    // _.sortBy(joins, ({tableName, tableName2, column, column2}) => {
+    //     return Math.min(tableMetaData[tableName].size, tableMetaData[tableName2].size)
+    // });
+    return {joins, tables, tableIndex}
 }
 
 module.exports = optimize;

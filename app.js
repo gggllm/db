@@ -120,46 +120,95 @@ function build(table_name) {
 function query(input) {
     let [select, from, where, filter] = parse(input);
     // get the join sequence and tables that is needed for extraction
-    let {joins, tables} = optimize(select, from, where, filter, metaDict);
-    let acc = {};
-    let joinNum = 0
-    join(joins[joinNum++])
+    let {joins, tables, tableIndex} = optimize(select, from, where, filter, metaDict);
+    let acc, accIndex = {}, accLength = 0;
+    let joinNum = 0;
+    join(joins[joinNum++]);
+
+    function next() {
+        joinNum++;
+        if (joinNum < joins.length) {
+            join(joins[joinNum])
+        } else {
+            // do the fucking sum!
+            let res = select.map(([table, col]) => {
+                let index = tableIndex[table][col];
+                return _(acc).map(index).sum()
+            });
+            console.log(res)
+        }
+    }
+
+    function addIndex(tableName) {
+        let tIndex = {};
+        accIndex[tableName] = tIndex;
+        let tableIndex = tableIndex[tableName];
+        for (let col in tableIndex) {
+            tIndex[col] = accLength + tableIndex[col]
+        }
+        accLength += tables[tableName].length
+    }
 
     function join({tableName, tableName2, column, column2}) {
-        // make sure table 1 is smaller then table 2
-        if (metaDict[tableName] > metaDict[tableName2]) {
-            let i = tableName;
-            tableName = tableName2;
-            tableName2 = i;
-            i = column;
-            column = column2;
-            column2 = i
-        }
-        let db1 = new Map();
-        let db2 = new Map();
-        get(tableName, column, (value, index) => {
-            let list = db1.get(value) || [];
-            list.push(index);
-            db1.set(value, list)
-        }, inMemoryDataBase, () => {
-            get(tableName2, column2, (value, index) => {
+        if (accIndex[tableName] || accIndex[tableName2]) {
+            // make sure table1 is in the acc
+            if (!accIndex[tableName]) {
+                let i = tableName;
+                tableName = tableName2;
+                tableName2 = i;
+                i = column;
+                column = column2;
+                column2 = i
+            }
+            column = accIndex[column];
+            column2 = tableIndex[tableName2][column2];
+            addIndex(tableName2);
+            let db1 = _.groupBy(acc, column);
+            acc = [];
+            get(tableName2, tables[tableName2], (value, index) => {
                 // if found the target, we just store the relationship we need
-                if (db1.get(value)) {
-                    let list = db2.get(value) || [];
-                    list.push(index);
-                    db2.set(value, list)
+                let target = db1.get(value[column2]);
+                if (target) {
+                    target.forEach((row1) => {
+                        acc.push([...row1, ...value])
+                    })
                 }// if no same drop
-            }, inMemoryDataBase, () => {
-                // build a filtered db1
-                let ndb1 = new Map();
-                for ({key, value} of db1) {
-                    if (db2.has(key)) {
-                        ndb1.set(key, value)
-                    }
-                }
+            }, inMemoryDataBase, next, filter[tableName2])
+        } else {
+            // make sure table 1 is smaller then table 2
+            // if (metaDict[tableName].size > metaDict[tableName2].size) {
+            //     let i = tableName;
+            //     tableName = tableName2;
+            //     tableName2 = i;
+            //     i = column;
+            //     column = column2;
+            //     column2 = i
+            // }
+            // change column name to its actual position in a row
+            column = tableIndex[tableName][column];
+            column2 = tableIndex[tableName2][column2];
 
-                join(joins[joinNum++])
-            })
-        })
+            let db1 = new Map();
+            acc = [];
+            // calculate the new acc index
+            addIndex(tableName);
+            addIndex(tableName2);
+
+            get(tableName, tables[tableName], (value, index) => {
+                let list = db1.get(value[column]) || [];
+                list.push(value);
+                db1.set(value, list)
+            }, inMemoryDataBase, () => {
+                get(tableName2, tables[tableName2], (value, index) => {
+                    // if found the target, we just store the relationship we need
+                    let target = db1.get(value[column2]);
+                    if (target) {
+                        target.forEach((row1) => {
+                            acc.push([...row1, ...value])
+                        })
+                    }// if no same drop
+                }, inMemoryDataBase, next, filter[tableName2])
+            }, filter[tableName])
+        }
     }
 }
