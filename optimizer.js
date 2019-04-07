@@ -49,19 +49,22 @@ function optimize(select, from, where, filter, tableMetaData) {
     }));
     // store the column's position in the resulting row
     let tableIndex = {};
-    for ({key, value}of tables) {
-        let index = {};
-        tableIndex[key] = index;
-        let array = Array(value);
+    for (let key in  tables) {
+        let value = tables[key]
+        let curIndex = {};
+        tableIndex[key] = curIndex;
+        let array = [...value];
+        // change set to array
+        tables[key] = array
         array.sort((a, b) => a > b);
         array.forEach((value, index) => {
-            index[value] = index
+            curIndex[value] = index
         })
     }
     // _.sortBy(joins, ({tableName, tableName2, column, column2}) => {
     //     return Math.min(tableMetaData[tableName].size, tableMetaData[tableName2].size)
     // });
-    return {joins, tables, tableIndex}
+    return {joins, tables, tableIndex,filterByTable}
 }
 
 module.exports = optimize;

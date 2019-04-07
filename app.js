@@ -8,27 +8,27 @@ const readFileByLine = require('./readFileByLine');
 const block_size = (fs.statSync('./app.js').blksize || 4096);
 const buffer_size = block_size * 400;
 
-const letter = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"];
+const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
 
 if (!fs.existsSync('./test')) {
     fs.mkdirSync('./test/');
 }
 let metaDict = {};
 let inMemoryDataBase = {};
-
-for (let i = 0; i < 17; i++) {
+let buildCount = 0
+for (let i = 0; i < 16; i++) {
     build(letter[i])
 }
 
 
 function build(table_name) {
-    let path = `./pa3_data/data/l/${table_name}.csv`;
+    let path = `./pa3_data/data/m/${table_name}.csv`;
 
     let write;
     let bufArray = [];
     let wlArray = [];
     let bufferIndexArray = [];
-    if (fs.statSync(path).size < 501732673) {
+    if (fs.statSync(path).size < 5017326) {
         let ds = [];
         inMemoryDataBase[table_name] = ds;
         let index = 0;
@@ -64,6 +64,7 @@ function build(table_name) {
 
 
     let columnNumber = 0;
+    let columnFinishCount=0
     let lineNumber = 0;
     let metaData = {};
     metaDict[path] = metaData;
@@ -109,9 +110,18 @@ function build(table_name) {
         metaData.size = lineNumber;
         //console.log(new Date().getTime() - start)
         wlArray.length && wlArray.forEach((wl, index) => {
-            wl.write(bufArray[index].slice(0, bufferIndexArray[index]), () => {
-                wl.close();
-                console.log(new Date().getTime() - start)
+            wl.end(bufArray[index].slice(0, bufferIndexArray[index]),'binary', () => {
+                columnFinishCount++
+                if(columnFinishCount=== columnNumber){
+                    buildCount++
+                    if (buildCount === 16) {
+                        console.log(new Date().getTime() - start)
+                        query(`SELECT SUM(A.c26), SUM(A.c22), SUM(A.c43), SUM(A.c25)
+                               FROM A, J, B, K
+                               WHERE A.c9 = J.c0 AND A.c1 = B.c0 AND A.c10 = K.c0
+                                 AND A.c16 > -4899;`)
+                    }
+                }
             })
         })
     });
@@ -120,19 +130,20 @@ function build(table_name) {
 function query(input) {
     let [select, from, where, filter] = parse(input);
     // get the join sequence and tables that is needed for extraction
-    let {joins, tables, tableIndex} = optimize(select, from, where, filter, metaDict);
+    let {joins, tables, tableIndex,filterByTable} = optimize(select, from, where, filter, metaDict);
     let acc, accIndex = {}, accLength = 0;
     let joinNum = 0;
+    console.log(select, joins, tables, tableIndex,filterByTable,filter)
     join(joins[joinNum++]);
 
     function next() {
-        joinNum++;
         if (joinNum < joins.length) {
-            join(joins[joinNum])
+            console.log(accIndex)
+            join(joins[joinNum++])
         } else {
             // do the fucking sum!
             let res = select.map(([table, col]) => {
-                let index = tableIndex[table][col];
+                let index = accIndex[table][col];
                 return _(acc).map(index).sum()
             });
             console.log(res)
@@ -142,14 +153,15 @@ function query(input) {
     function addIndex(tableName) {
         let tIndex = {};
         accIndex[tableName] = tIndex;
-        let tableIndex = tableIndex[tableName];
-        for (let col in tableIndex) {
-            tIndex[col] = accLength + tableIndex[col]
+        let curIndex = tableIndex[tableName];
+        for (let col in curIndex) {
+            tIndex[col] = accLength + curIndex[col]
         }
         accLength += tables[tableName].length
     }
 
     function join({tableName, tableName2, column, column2}) {
+        console.log(tableName, tableName2)
         if (accIndex[tableName] || accIndex[tableName2]) {
             // make sure table1 is in the acc
             if (!accIndex[tableName]) {
@@ -160,20 +172,20 @@ function query(input) {
                 column = column2;
                 column2 = i
             }
-            column = accIndex[column];
+            column = accIndex[tableName][column];
             column2 = tableIndex[tableName2][column2];
             addIndex(tableName2);
             let db1 = _.groupBy(acc, column);
             acc = [];
             get(tableName2, tables[tableName2], (value, index) => {
                 // if found the target, we just store the relationship we need
-                let target = db1.get(value[column2]);
+                let target = db1[value[column2]];
                 if (target) {
                     target.forEach((row1) => {
                         acc.push([...row1, ...value])
                     })
                 }// if no same drop
-            }, inMemoryDataBase, next, filter[tableName2])
+            }, inMemoryDataBase, next, filterByTable[tableName2])
         } else {
             // make sure table 1 is smaller then table 2
             // if (metaDict[tableName].size > metaDict[tableName2].size) {
@@ -195,20 +207,23 @@ function query(input) {
             addIndex(tableName2);
 
             get(tableName, tables[tableName], (value, index) => {
-                let list = db1.get(value[column]) || [];
+                //console.log(value)
+                let val=value[column]
+                let list = db1.get(val) || [];
                 list.push(value);
-                db1.set(value, list)
+                db1.set(val, list)
             }, inMemoryDataBase, () => {
                 get(tableName2, tables[tableName2], (value, index) => {
                     // if found the target, we just store the relationship we need
                     let target = db1.get(value[column2]);
+                    //console.log(value[column2],target)
                     if (target) {
                         target.forEach((row1) => {
                             acc.push([...row1, ...value])
                         })
                     }// if no same drop
-                }, inMemoryDataBase, next, filter[tableName2])
-            }, filter[tableName])
+                }, inMemoryDataBase, next, filterByTable[tableName2])
+            }, filterByTable[tableName])
         }
     }
 }

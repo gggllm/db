@@ -1,7 +1,8 @@
 const _ = require("lodash");
+const fs = require('fs');
 
 function readFromFile(table, col) {
-    return fs.createReadStream(`./test/${table}${col}.bin`, {encoding: 'buffer'})
+    return fs.createReadStream(`./test/${table}${col}.bin`)
 }
 
 // cb is for streaming purpose
@@ -9,13 +10,14 @@ function readFromFile(table, col) {
 
 function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
     if (inMemoryDataBase[table]) {
+        console.log(`search ${table} in memory`);
         _(inMemoryDataBase[table]).map((value) => {
             return colums.map((column => {
                 return value[column]
             }))
         }).filter((row) => {
-            let column, filter;
-            for ([column, filter] in filters) {
+            for (let i in filters) {
+                let [column, filter] = filters[i]
                 if (!filter(row[column])) {
                     return false
                 }
@@ -24,47 +26,64 @@ function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
         }).forEach(cb);
         cb2 && cb2()
     } else {
+        console.log(`search ${table} in disk`);
         let db = [];
         let sizeArray = [];
-        let cursor = 0;
         let finished = 0;
-        let length = colums.length;
+        let drop = [];
+        let columnNumber = colums.length;
         filters = _.groupBy(filters, 0);
         colums.forEach((col, index) => {
             let rl = readFromFile(table, col);
-            let count = 0;
-            let colFilters = filters[col].map(1);
-            rl.on('data', () => {
-                let buf = this.readInt32LE();
-                while (buf) {
+            let rowNumber = 0;
+            let colFilters = _.map(filters[col], 1);
+            let lastChunk
+            rl.on('data', (chunk) => {
+                if(lastChunk){
+                    chunk=Buffer.concat([lastChunk,chunk])
+                }
+                let cursor = 0;
+                let buf;
+                while (cursor + 4 <= chunk.length) {
+                    buf = chunk.readInt32LE(cursor);
+                    cursor += 4;
+                    if (drop[rowNumber]) {
+                        //console.log('drop')
+                        rowNumber++;
+                        continue
+                    }
                     let dropFlag = false;
                     for (let filter of colFilters) {
                         if (!filter(buf)) {
-                            buf = this.readInt32LE();
                             dropFlag = true;
                             break
                         }
                     }
                     if (dropFlag) {
-                        db[count] = null;// delete this row
-                        count++;
-                        break
+                        //console.log('drop')
+                        db[rowNumber] = null;// delete this row
+                        drop[rowNumber] = true;
+                        rowNumber++;
+                        continue
                     }
-                    let row = db[count] || [];
-                    db[count] = row;
-                    let size = sizeArray[count] || 0;
-                    sizeArray[count] = ++size;
+                    let row = db[rowNumber] || [];
+                    db[rowNumber] = row;
+                    let size = sizeArray[rowNumber] || 0;
+                    sizeArray[rowNumber] = ++size;
                     row[index] = buf;
-                    count++;
-                    if (size === length) {
+                    rowNumber++;
+                    if (size === columnNumber) {
+                        //console.log(row);
                         cb(row);
-                        db[count] = null //delete the finished row
+                        db[rowNumber - 1] = null //delete the finished row
                     }
-                    buf = this.readInt32LE();
                 }
+                lastChunk=chunk.slice(cursor)
             });
-            rl.on('close', () => {
-                if (++finished === length) {
+            rl.on('end', () => {
+                finished++;
+                if (finished === columnNumber) {
+                    console.log('finished loading data from disk');
                     cb2 && cb2()
                 }
             })
