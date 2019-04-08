@@ -26,21 +26,33 @@ let command = readline.createInterface({
     terminal: false
 });
 let lineCount = 0;
-let total;
+let total = 1;
 let q = '';
 let queryNo = 0;
 let queryResult = [];
 let buildCountTotal = 0
+
+function buildAll(line) {
+    //build index
+    let lines = line.split(',')
+    buildCountTotal = lines.length
+    lines.forEach((path, index) => {
+        build(path, letter[index])
+    })
+}
+
+//test
+let paths = []
+for (let i = 0; i < 6; i++) {
+    paths.push(`./pa3_data/data/xxs/${letter[i]}.csv`)
+}
+buildAll(paths.join(','))
+
 command.on('line'
     , function (line) {
         lineCount++;
         if (lineCount === 1) {
-            //build index
-            let lines = line.split(',')
-            buildCountTotal = lines.length
-            lines.forEach((path, index) => {
-                build(path, letter[index])
-            })
+            buildAll(line)
         } else if (lineCount === 2) {
             total = parseInt(line);
             for (let i = 0; i < total; i++) {
@@ -154,7 +166,11 @@ function build(path, tableName) {
                     if (buildCount === buildCountTotal) {
                         //console.log(new Date().getTime() - start)
                         builtFlag = true
-                        nextQuery()
+                        query(`SELECT SUM(A.c40), SUM(E.c4), SUM(D.c1)
+                               FROM A, C, D, E
+                               WHERE C.c1 = E.c0 AND A.c2 = C.c0 AND A.c3 = D.c0 AND C.c2 = D.c2
+                                 AND D.c3 > -7349;`, 0)
+                        //nextQuery()
                     }
                 }
             })
@@ -205,7 +221,7 @@ function query(input, queryNo) {
             //console.log(queryNo,res)
             if (total === 0) {
                 queryResult.forEach((value) => {
-                    //console.log(value)
+                    console.log(value)
                     process.stdout.write(value + '\n')
                 });
                 process.exit()
@@ -226,6 +242,16 @@ function query(input, queryNo) {
     function join({tableName, tableName2, column, column2}) {
         //console.log(tableName, tableName2)
         if (accIndex[tableName] || accIndex[tableName2]) {
+            if (accIndex[tableName] && accIndex[tableName2]) {
+                // only do filter in this situation
+                column = accIndex[tableName][column];
+                column2 = accIndex[tableName2][column2];
+                acc = acc.filter((row) => {
+                    return row[column] === row[column2]
+                })
+                next()
+                return
+            }
             // make sure table1 is in the acc
             if (!accIndex[tableName]) {
                 let i = tableName;
@@ -259,7 +285,7 @@ function query(input, queryNo) {
                 column = column2;
                 column2 = i
             }
-           // change column name to its actual position in a row
+            // change column name to its actual position in a row
             column = tableIndex[tableName][column];
             column2 = tableIndex[tableName2][column2];
 
