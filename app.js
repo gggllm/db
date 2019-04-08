@@ -26,7 +26,7 @@ let command = readline.createInterface({
     terminal: false
 });
 let lineCount = 0;
-let total = 1;
+let total;
 let q = '';
 let queryNo = 0;
 let queryResult = [];
@@ -311,7 +311,6 @@ function query(input, queryNo) {
             //make sure table 1 is smaller then table 2
             if (metaDict[tableName].size > metaDict[tableName2].size) {
                 let i = tableName;
-                tableName = tableName2;
                 tableName2 = i;
                 i = column;
                 column = column2;
