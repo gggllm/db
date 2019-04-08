@@ -186,6 +186,10 @@ function nextQuery() {
         let arg = queryArray[queryNumber++]
         //console.log(arg[1])
         query(...arg)
+    } else if (queryNumber === 0) {
+        setTimeout(() => {
+            nextQuery()
+        }, 100)
     }
 }
 
