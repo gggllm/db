@@ -42,11 +42,11 @@ function buildAll(line) {
 }
 
 //test
-let paths = []
-for (let i = 0; i < 6; i++) {
-    paths.push(`./pa3_data/data/xxs/${letter[i]}.csv`)
-}
-buildAll(paths.join(','))
+// let paths = []
+// for (let i = 0; i < 6; i++) {
+//     paths.push(`./pa3_data/data/xxs/${letter[i]}.csv`)
+// }
+// buildAll(paths.join(','))
 
 command.on('line'
     , function (line) {
@@ -166,11 +166,11 @@ function build(path, tableName) {
                     if (buildCount === buildCountTotal) {
                         //console.log(new Date().getTime() - start)
                         builtFlag = true
-                        query(`SELECT SUM(A.c40), SUM(E.c4), SUM(D.c1)
-                               FROM A, C, D, E
-                               WHERE C.c1 = E.c0 AND A.c2 = C.c0 AND A.c3 = D.c0 AND C.c2 = D.c2
-                                 AND D.c3 > -7349;`, 0)
-                        //nextQuery()
+                        // query(`SELECT SUM(A.c40), SUM(E.c4), SUM(D.c1)
+                        //        FROM A, C, D, E
+                        //        WHERE C.c1 = E.c0 AND A.c2 = C.c0 AND A.c3 = D.c0 AND C.c2 = D.c2
+                        //          AND D.c3 > -7349;`, 0)
+                        nextQuery()
                     }
                 }
             })
@@ -197,21 +197,30 @@ function query(input, queryNo) {
     let [select, from, where, filter] = parse(input);
     // get the join sequence and tables that is needed for extraction
     let {joins, tables, tableIndex, filterByTable} = optimize(select, from, where, filter, metaDict);
-    let acc, accIndex = {}, accLength = 0;
+    let acc=[], accIndex = {}, accLength = 0;
     let joinNum = 0;
     console.log(select, joins, tables, tableIndex, filter)
-    join(joins[joinNum++]);
+    let lastFlag = false
+    let result
+    next()
 
     function next() {
         if (joinNum < joins.length) {
             console.log(acc.length, accIndex)
+            if (joinNum + 1 === joins.length) {
+                lastFlag = true
+                result = select.map(() => {
+                    return 0
+                })
+            }
             join(joins[joinNum++])
         } else {
             // do the fucking sum!
-            let res = select.map(([table, col]) => {
-                let index = accIndex[table][col];
-                return _(acc).map(index).sum()
-            });
+            // let res = select.map(([table, col]) => {
+            //     let index = accIndex[table][col];
+            //     return _(acc).map(index).sum()
+            // });
+            let res = result
             total--;
             queryResult[queryNo] = res.map((value) => {
                 if (value === 0) return '';
@@ -221,7 +230,8 @@ function query(input, queryNo) {
             //console.log(queryNo,res)
             if (total === 0) {
                 queryResult.forEach((value) => {
-                    console.log(value)
+                    //console.log(value)
+                    console.log(acc.length)
                     process.stdout.write(value + '\n')
                 });
                 process.exit()
@@ -249,6 +259,16 @@ function query(input, queryNo) {
                 acc = acc.filter((row) => {
                     return row[column] === row[column2]
                 })
+                if (lastFlag) {
+                    select = select.map(([table, col]) => {
+                        return accIndex[table][col]
+                    })
+                    acc.forEach((row) => {
+                        select.forEach((col, index) => {
+                            result[index] += row[col]
+                        })
+                    })
+                }
                 next()
                 return
             }
@@ -266,12 +286,24 @@ function query(input, queryNo) {
             addIndex(tableName2);
             let db1 = _.groupBy(acc, column);
             acc = [];
+            // if is the last do the accumulation immediately
+            if (lastFlag) {
+                select = select.map(([table, col]) => {
+                    return accIndex[table][col]
+                })
+            }
             get(tableName2, tables[tableName2], (value, index) => {
                 // if found the target, we just store the relationship we need
                 let target = db1[value[column2]];
                 if (target) {
                     target.forEach((row1) => {
-                        acc.push([...row1, ...value])
+                        if (lastFlag) {
+                            select.forEach((col, index) => {
+                                result[index] += [...row1, ...value][col]
+                            })
+                        } else {
+                            acc.push([...row1, ...value])
+                        }
                     })
                 }// if no same drop
             }, inMemoryDataBase, next, filterByTable[tableName2])
@@ -294,7 +326,11 @@ function query(input, queryNo) {
             // calculate the new acc index
             addIndex(tableName);
             addIndex(tableName2);
-
+            if (lastFlag) {
+                select = select.map(([table, col]) => {
+                    return accIndex[table][col]
+                })
+            }
             get(tableName, tables[tableName], (value, index) => {
                 //console.log(value)
                 let val = value[column];
@@ -308,7 +344,13 @@ function query(input, queryNo) {
                     //console.log(value[column2],target)
                     if (target) {
                         target.forEach((row1) => {
-                            acc.push([...row1, ...value])
+                            if (lastFlag) {
+                                select.forEach((col, index) => {
+                                    result[index] += [...row1, ...value][col]
+                                })
+                            } else {
+                                acc.push([...row1, ...value])
+                            }
                         })
                     }// if no same drop
                 }, inMemoryDataBase, next, filterByTable[tableName2])
