@@ -206,6 +206,7 @@ function query(input, queryNo) {
     //console.log(queryNo)
     //console.log(select, joins, tables, tableIndex, filter)
     let lastFlag = false;
+    let finalCount = 0
     let result;
     next();
 
@@ -233,6 +234,7 @@ function query(input, queryNo) {
                 else return value
             }).join(',');
             //console.log(queryNo, res)
+            console.log(finalCount)
             nextQuery();
             if (total === 0) {
                 queryResult.forEach((value) => {
@@ -273,6 +275,7 @@ function query(input, queryNo) {
                     acc.forEach((row) => {
                         select.forEach((col, index) => {
                             if (row[column] === row[column2]) {
+                                finalCount++
                                 result[index] += row[col]
                             }
                         })
@@ -309,12 +312,14 @@ function query(input, queryNo) {
                 let target = db1[value[column2]];
                 if (target) {
                     target.forEach((row1) => {
+                        let cur = [...row1, ...value]
+                        finalCount++
                         if (lastFlag) {
                             select.forEach((col, index) => {
-                                result[index] += [...row1, ...value][col]
+                                result[index] += cur[col]
                             })
                         } else {
-                            acc.push([...row1, ...value])
+                            acc.push(cur)
                         }
                     })
                 }// if no same drop
@@ -356,12 +361,14 @@ function query(input, queryNo) {
                     //console.log(value[column2],target)
                     if (target) {
                         target.forEach((row1) => {
+                            let cur = [...row1, ...value]
+                            finalCount++
                             if (lastFlag) {
                                 select.forEach((col, index) => {
-                                    result[index] += [...row1, ...value][col]
+                                    result[index] += cur[col]
                                 })
                             } else {
-                                acc.push([...row1, ...value])
+                                acc.push(cur)
                             }
                         })
                     }// if no same drop
