@@ -47,13 +47,14 @@ function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
                 let cursor = 0;
                 let value;
                 while (cursor + 4 <= chunk.length) {
-                    value = chunk.readInt32LE(cursor);
-                    cursor += 4;
                     if (drop[rowNumber]) {
                         //console.log('drop')
+                        cursor += 4;
                         rowNumber++;
                         continue
                     }
+                    value = chunk.readInt32LE(cursor);
+                    cursor += 4;
                     let dropFlag = false;
                     for (let filter of colFilters) {
                         if (!filter(value)) {
