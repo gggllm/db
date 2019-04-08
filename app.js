@@ -199,14 +199,14 @@ function query(input, queryNo) {
     let {joins, tables, tableIndex, filterByTable} = optimize(select, from, where, filter, metaDict);
     let acc = [], accIndex = {}, accLength = 0;
     let joinNum = 0;
-    console.log(select, joins, tables, tableIndex, filter)
+    //console.log(select, joins, tables, tableIndex, filter)
     let lastFlag = false
     let result
     next()
 
     function next() {
         if (joinNum < joins.length) {
-            console.log(acc.length, accIndex)
+            //console.log(acc.length, accIndex)
             if (joinNum + 1 === joins.length) {
                 lastFlag = true
                 result = select.map(() => {
@@ -231,7 +231,7 @@ function query(input, queryNo) {
             if (total === 0) {
                 queryResult.forEach((value) => {
                     //console.log(value)
-                    console.log(acc.length)
+                    //console.log(acc.length)
                     process.stdout.write(value + '\n')
                 });
                 process.exit()
