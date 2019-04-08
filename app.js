@@ -7,6 +7,7 @@ const readFileByLine = require('./readFileByLine');
 // multiply by 4 to make sure it can fit by integer without padding
 const block_size = (fs.statSync('./app.js').blksize || 4096);
 const buffer_size = block_size * 4;
+const MAXROW = 1000000
 
 let start = new Date().getTime();
 let builtFlag = false;
@@ -197,98 +198,135 @@ function addQuery(input, queryNo) {
     queryArray.push([input, queryNo])
 }
 
+
 function query(input, queryNo) {
+    function calculateAccIndex(joins, tables) {
+        function addIndex(tableName) {
+            let tIndex = {};
+            accIndex[tableName] = tIndex;
+            let curIndex = tableIndex[tableName];
+            for (let col in curIndex) {
+                tIndex[col] = accLength + curIndex[col]
+            }
+            accLength += tables[tableName].length
+        }
+
+        let accIndex = {}
+        let accLength = 0;
+        joins.forEach(({tableName, tableName2, column, column2}) => {
+            if (!accIndex[tableName]) {
+                addIndex(tableName)
+            }
+            if (!accIndex[tableName2]) {
+                addIndex(tableName2)
+            }
+        })
+        return accIndex
+    }
+
+    function addJoin(joined, tableName) {
+        joined[tableName] = true
+    }
+
+    function isJoined(joined, tableName) {
+        return joined[tableName]
+    }
+
     let [select, from, where, filter] = parse(input);
     // get the join sequence and tables that is needed for extraction
     let {joins, tables, tableIndex, filterByTable} = optimize(select, from, where, filter, metaDict);
-    let acc = [], accIndex = {}, accLength = 0;
-    let joinNum = 0;
+    let accIndex = calculateAccIndex(joins, tables);
     //console.log(queryNo)
     //console.log(select, joins, tables, tableIndex, filter)
-    let lastFlag = false;
-    let finalCount = 0
-    let result;
-    next();
+    let result = select.map(() => {
+        return 0
+    });
+    select = select.map(([table, col]) => {
+        return accIndex[table][col]
+    })
+    let globalQueue = []
+    let globalQueueIndex = 0
+    next(0);
 
-    function next() {
+    function next(joinNum, acc, joined = []) {
         if (joinNum < joins.length) {
-            //console.log(acc.length)
-            //console.log(acc.length, accIndex)
-            if (joinNum === joins.length - 1) {
-                lastFlag = true;
-                result = select.map(() => {
-                    return 0
-                })
-            }
-            join(joins[joinNum++])
+            join(joins[joinNum], joined, acc, joinNum)
         } else {
-            // do the fucking sum!
-            // let res = select.map(([table, col]) => {
-            //     let index = accIndex[table][col];
-            //     return _(acc).map(index).sum()
-            // });
-            let res = result;
-            total--;
-            queryResult[queryNo] = res.map((value) => {
-                if (value === 0) return '';
-                else return value
-            }).join(',');
-            //console.log(queryNo, res)
-            console.log(finalCount)
-            nextQuery();
-            if (total === 0) {
-                queryResult.forEach((value) => {
-                    //console.log(value)
-                    //console.log(acc.length)
-                    process.stdout.write(value + '\n')
-                });
-                process.exit()
+            // current pipeline is over
+
+            // all data is processed ????
+            if (globalQueue.length === globalQueueIndex) {
+                total--;
+                queryResult[queryNo] = result.map((value) => {
+                    if (value === 0) return '';
+                    else return value
+                }).join(',');
+                //console.log(queryNo, result)
+                nextQuery();
+                if (total === 0) {
+                    queryResult.forEach((value) => {
+                        //console.log(value)
+                        //console.log(acc.length)
+                        process.stdout.write(value + '\n')
+                    });
+                    process.exit()
+                }
+            } else {
+                globalQueue[globalQueueIndex++]()
             }
         }
     }
 
-    function addIndex(tableName) {
-        if (accIndex[tableName]) {
-            //console.log(accIndex, tableName)
-        }
-        let tIndex = {};
-        accIndex[tableName] = tIndex;
-        let curIndex = tableIndex[tableName];
-        for (let col in curIndex) {
-            tIndex[col] = accLength + curIndex[col]
-        }
-        accLength += tables[tableName].length
-    }
 
-    function join({tableName, tableName2, column, column2}) {
+    function join({tableName, tableName2, column, column2}, joined, acc, joinNum) {
+        let pipeData = []
+        let pipeDataIndex = 0
+        let pipingFlag = false
+
+        function pipe(data) {
+            if (pipingFlag) {
+                pipeData.push(data);
+            }
+            next(joinNum + 1, data, joined)
+            pipingFlag = true
+            globalQueue.push(() => {
+                pipingFlag = false
+                //more data to go
+                if (pipeDataIndex < pipeData.length) {
+                    pipe(pipeData[pipeDataIndex++])
+                }
+            })
+        }
+
+        let lastFlag = false
+        if (joinNum === joins.length - 1) {
+            lastFlag = true;
+        }
+
         //console.log(tableName, tableName2)
         // make sure table1 is in the acc
-        if (accIndex[tableName] || accIndex[tableName2]) {
+        if (isJoined(joined, tableName) || isJoined(joined, tableName2)) {
             // only do filter in this situation
-            if (accIndex[tableName] && accIndex[tableName2]) {
+            if (isJoined(joined, tableName) && isJoined(joined, tableName2)) {
                 column = accIndex[tableName][column];
                 column2 = accIndex[tableName2][column2];
                 if (lastFlag) {
-                    select = select.map(([table, col]) => {
-                        return accIndex[table][col]
-                    });
                     acc.forEach((row) => {
-                        select.forEach((col, index) => {
-                            if (row[column] === row[column2]) {
-                                finalCount++
+                        if (row[column] === row[column2]) {
+                            select.forEach((col, index) => {
                                 result[index] += row[col]
-                            }
-                        })
+                            })
+                        }
                     })
                 } else {
                     acc = acc.filter((row) => {
                         return row[column] === row[column2]
                     });
                 }
-                next();
+                next(joinNum + 1, acc, joined);
                 return
             }
-            if (!accIndex[tableName]) {
+            if (!isJoined(joined, tableName)) {
                 let i = tableName;
                 tableName = tableName2;
                 tableName2 = i;
@@ -298,22 +336,15 @@ function query(input, queryNo) {
             }
             column = accIndex[tableName][column];
             column2 = tableIndex[tableName2][column2];
-            addIndex(tableName2);
+            addJoin(joined, tableName2);
             let db1 = _.groupBy(acc, column);
             acc = [];
-            // if is the last do the accumulation immediately
-            if (lastFlag) {
-                select = select.map(([table, col]) => {
-                    return accIndex[table][col]
-                })
-            }
             get(tableName2, tables[tableName2], (value, index) => {
                 // if found the target, we just store the relationship we need
                 let target = db1[value[column2]];
                 if (target) {
                     target.forEach((row1) => {
-                        let cur = [...row1, ...value]
-                        finalCount++
+                        let cur = [...row1, ...value];
                         if (lastFlag) {
                             select.forEach((col, index) => {
                                 result[index] += cur[col]
@@ -323,17 +354,17 @@ function query(input, queryNo) {
                         }
                     })
                 }// if no same drop
-            }, inMemoryDataBase, next, filterByTable[tableName2])
+            }, inMemoryDataBase, () => next(joinNum + 1, acc, joined), filterByTable[tableName2])
         } else {
-            //make sure table 1 is smaller then table 2
-            if (metaDict[tableName].size > metaDict[tableName2].size) {
-                let i = tableName;
-                tableName = tableName2
-                tableName2 = i;
-                i = column;
-                column = column2;
-                column2 = i
-            }
+            // //make sure table 1 is smaller then table 2
+            // if (metaDict[tableName].size > metaDict[tableName2].size) {
+            //     let i = tableName;
+            //     tableName = tableName2;
+            //     tableName2 = i;
+            //     i = column;
+            //     column = column2;
+            //     column2 = i
+            // }
             // change column name to its actual position in a row
             column = tableIndex[tableName][column];
             column2 = tableIndex[tableName2][column2];
@@ -341,13 +372,9 @@ function query(input, queryNo) {
             let db1 = new Map();
             acc = [];
             // calculate the new acc index
-            addIndex(tableName);
-            addIndex(tableName2);
-            if (lastFlag) {
-                select = select.map(([table, col]) => {
-                    return accIndex[table][col]
-                })
-            }
+            addJoin(joined, tableName);
+            addJoin(joined, tableName2);
+
             get(tableName, tables[tableName], (value, index) => {
                 //console.log(value)
                 let val = value[column];
@@ -361,8 +388,7 @@ function query(input, queryNo) {
                     //console.log(value[column2],target)
                     if (target) {
                         target.forEach((row1) => {
-                            let cur = [...row1, ...value]
-                            finalCount++
+                            let cur = [...row1, ...value];
                             if (lastFlag) {
                                 select.forEach((col, index) => {
                                     result[index] += cur[col]
@@ -372,7 +398,7 @@ function query(input, queryNo) {
                             }
                         })
                     }// if no same drop
-                }, inMemoryDataBase, next, filterByTable[tableName2])
+                }, inMemoryDataBase, () => next(joinNum + 1, acc, joined), filterByTable[tableName2])
             }, filterByTable[tableName])
         }
     }
