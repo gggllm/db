@@ -21,31 +21,38 @@ let buildCount = 0;
 
 
 let readline = require('readline');
-let rl = readline.createInterface({
+let command = readline.createInterface({
     input: process.stdin,
-    output: process.stdout,
     terminal: false
 });
 let lineCount = 0;
 let total;
 let q = '';
-rl.on('line', function (line) {
-    lineCount++;
-    if (lineCount === 0) {
-        //build index
-        line.split(',').forEach((path, index) => {
-            build(path, letter[index])
-        })
-    } else if (lineCount === 1) {
-        total = parseInt(line)
-    } else {
-        q += '\n' + line;
-        if (lineCount % 4 === 1) {
-            query(q);
-            q = ''
+let queryNo = 0;
+let queryResult = [];
+command.on('line'
+    , function (line) {
+        lineCount++;
+        if (lineCount === 1) {
+            //build index
+            line.split(',').forEach((path, index) => {
+                build(path, letter[index])
+            })
+        } else if (lineCount === 2) {
+            total = parseInt(line);
+            for (let i = 0; i < total; i++) {
+                queryResult.push('')
+            }
+        } else {
+            if (!line) {
+                q && query(q, queryNo++);
+                q = ''
+            } else {
+                q += line + '\n';
+            }
+
         }
-    }
-});
+    });
 
 
 function build(path, tableName) {
@@ -54,7 +61,7 @@ function build(path, tableName) {
     let bufArray = [];
     let wlArray = [];
     let bufferIndexArray = [];
-    if (fs.statSync(path).size < 5017326) {
+    if (fs.statSync(path).size < 501732600) {
         let ds = [];
         inMemoryDataBase[tableName] = ds;
         let index = 0;
@@ -138,20 +145,19 @@ function build(path, tableName) {
         //console.log(new Date().getTime() - start)
         wlArray.length && wlArray.forEach((wl, index) => {
             wl.end(bufArray[index].slice(0, bufferIndexArray[index]), 'binary', () => {
-                // columnFinishCount++;
-                // if (columnFinishCount === columnNumber) {
-                //     buildCount++;
-                //     if (buildCount === 16) {
-                //         //console.log(new Date().getTime() - start)
-                //
-                //     }
-                // }
+                columnFinishCount++;
+                if (columnFinishCount === columnNumber) {
+                    buildCount++;
+                    if (buildCount === 16) {
+                        //console.log(new Date().getTime() - start)
+                    }
+                }
             })
         })
     });
 }
 
-function query(input) {
+function query(input, queryNo) {
     let [select, from, where, filter] = parse(input);
     // get the join sequence and tables that is needed for extraction
     let {joins, tables, tableIndex, filterByTable} = optimize(select, from, where, filter, metaDict);
@@ -170,11 +176,18 @@ function query(input) {
                 let index = accIndex[table][col];
                 return _(acc).map(index).sum()
             });
-            //console.log(new Date().getTime() - start)
-            rl.write(res);
             total--;
+            queryResult[queryNo] = res.map((value) => {
+                if (value === 0) return '';
+                else return value
+            }).join(',');
+            //console.log(queryNo,res)
             if (total === 0) {
-                rl.close()
+                queryResult.forEach((value) => {
+                    //console.log(value)
+                    process.stdout.write(value + '\n')
+                });
+                process.exit()
             }
         }
     }
