@@ -197,7 +197,7 @@ function query(input, queryNo) {
     let [select, from, where, filter] = parse(input);
     // get the join sequence and tables that is needed for extraction
     let {joins, tables, tableIndex, filterByTable} = optimize(select, from, where, filter, metaDict);
-    let acc=[], accIndex = {}, accLength = 0;
+    let acc = [], accIndex = {}, accLength = 0;
     let joinNum = 0;
     console.log(select, joins, tables, tableIndex, filter)
     let lastFlag = false
