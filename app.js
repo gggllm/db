@@ -9,7 +9,7 @@ const block_size = (fs.statSync('./app.js').blksize || 4096);
 const buffer_size = block_size * 4;
 
 let start = new Date().getTime();
-let builtFlag = false
+let builtFlag = false;
 const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
 
 if (!fs.existsSync('./test')) {
@@ -30,12 +30,12 @@ let total;
 let q = '';
 let queryNo = 0;
 let queryResult = [];
-let buildCountTotal = 0
+let buildCountTotal = 0;
 
 function buildAll(line) {
     //build index
-    let lines = line.split(',')
-    buildCountTotal = lines.length
+    let lines = line.split(',');
+    buildCountTotal = lines.length;
     lines.forEach((path, index) => {
         build(path, letter[index])
     })
@@ -59,7 +59,7 @@ command.on('line'
                 queryResult.push('')
             }
         } else {
-            if (!line) {
+            if (!line.trim()) {
                 q && addQuery(q, queryNo++);
                 q = ''
             } else {
@@ -165,7 +165,7 @@ function build(path, tableName) {
                     buildCount++;
                     if (buildCount === buildCountTotal) {
                         //console.log(new Date().getTime() - start)
-                        builtFlag = true
+                        builtFlag = true;
                         // query(`SELECT SUM(A.c40), SUM(E.c4), SUM(D.c1)
                         //        FROM A, C, D, E
                         //        WHERE C.c1 = E.c0 AND A.c2 = C.c0 AND A.c3 = D.c0 AND C.c2 = D.c2
@@ -178,15 +178,15 @@ function build(path, tableName) {
     });
 }
 
-let queryArray = []
+let queryArray = [];
 let queryNumber = 0;
 
 function nextQuery() {
     if (queryNumber < queryArray.length) {
-        let arg = queryArray[queryNumber++]
+        let arg = queryArray[queryNumber++];
         //console.log(arg[1])
         query(...arg)
-    } else if (queryNumber === 0) {
+    } else if (total !== 0) {
         setTimeout(() => {
             nextQuery()
         }, 100)
@@ -203,16 +203,18 @@ function query(input, queryNo) {
     let {joins, tables, tableIndex, filterByTable} = optimize(select, from, where, filter, metaDict);
     let acc = [], accIndex = {}, accLength = 0;
     let joinNum = 0;
+    //console.log(queryNo)
     //console.log(select, joins, tables, tableIndex, filter)
-    let lastFlag = false
-    let result
-    next()
+    let lastFlag = false;
+    let result;
+    next();
 
     function next() {
         if (joinNum < joins.length) {
+            //console.log(acc.length)
             //console.log(acc.length, accIndex)
-            if (joinNum + 1 === joins.length) {
-                lastFlag = true
+            if (joinNum === joins.length - 1) {
+                lastFlag = true;
                 result = select.map(() => {
                     return 0
                 })
@@ -224,14 +226,14 @@ function query(input, queryNo) {
             //     let index = accIndex[table][col];
             //     return _(acc).map(index).sum()
             // });
-            let res = result
+            let res = result;
             total--;
             queryResult[queryNo] = res.map((value) => {
                 if (value === 0) return '';
                 else return value
             }).join(',');
-            nextQuery()
-            //console.log(queryNo,res)
+            //console.log(queryNo, res)
+            nextQuery();
             if (total === 0) {
                 queryResult.forEach((value) => {
                     //console.log(value)
@@ -244,6 +246,9 @@ function query(input, queryNo) {
     }
 
     function addIndex(tableName) {
+        if (accIndex[tableName]) {
+            //console.log(accIndex, tableName)
+        }
         let tIndex = {};
         accIndex[tableName] = tIndex;
         let curIndex = tableIndex[tableName];
@@ -255,28 +260,31 @@ function query(input, queryNo) {
 
     function join({tableName, tableName2, column, column2}) {
         //console.log(tableName, tableName2)
+        // make sure table1 is in the acc
         if (accIndex[tableName] || accIndex[tableName2]) {
+            // only do filter in this situation
             if (accIndex[tableName] && accIndex[tableName2]) {
-                // only do filter in this situation
                 column = accIndex[tableName][column];
                 column2 = accIndex[tableName2][column2];
-                acc = acc.filter((row) => {
-                    return row[column] === row[column2]
-                })
                 if (lastFlag) {
                     select = select.map(([table, col]) => {
                         return accIndex[table][col]
-                    })
+                    });
                     acc.forEach((row) => {
                         select.forEach((col, index) => {
-                            result[index] += row[col]
+                            if (row[column] === row[column2]) {
+                                result[index] += row[col]
+                            }
                         })
                     })
+                } else {
+                    acc = acc.filter((row) => {
+                        return row[column] === row[column2]
+                    });
                 }
-                next()
+                next();
                 return
             }
-            // make sure table1 is in the acc
             if (!accIndex[tableName]) {
                 let i = tableName;
                 tableName = tableName2;
@@ -315,6 +323,7 @@ function query(input, queryNo) {
             //make sure table 1 is smaller then table 2
             if (metaDict[tableName].size > metaDict[tableName2].size) {
                 let i = tableName;
+                tableName = tableName2
                 tableName2 = i;
                 i = column;
                 column = column2;
