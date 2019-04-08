@@ -28,7 +28,7 @@ function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
         }).forEach(cb);
         cb2 && cb2()
     } else {
-        console.log(`search ${table} in disk`);
+        //console.log(`search ${table} in disk`);
         let db = [];
         let sizeArray = [];
         let finished = 0;

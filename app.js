@@ -9,7 +9,7 @@ const block_size = (fs.statSync('./app.js').blksize || 4096);
 const buffer_size = block_size * 4;
 
 let start = new Date().getTime();
-
+let builtFlag = false
 const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
 
 if (!fs.existsSync('./test')) {
@@ -30,12 +30,15 @@ let total;
 let q = '';
 let queryNo = 0;
 let queryResult = [];
+let buildCountTotal = 0
 command.on('line'
     , function (line) {
         lineCount++;
         if (lineCount === 1) {
             //build index
-            line.split(',').forEach((path, index) => {
+            let lines = line.split(',')
+            buildCountTotal = lines.length
+            lines.forEach((path, index) => {
                 build(path, letter[index])
             })
         } else if (lineCount === 2) {
@@ -45,7 +48,7 @@ command.on('line'
             }
         } else {
             if (!line) {
-                q && query(q, queryNo++);
+                q && addQuery(q, queryNo++);
                 q = ''
             } else {
                 q += line + '\n';
@@ -61,7 +64,7 @@ function build(path, tableName) {
     let bufArray = [];
     let wlArray = [];
     let bufferIndexArray = [];
-    if (fs.statSync(path).size < 501732600) {
+    if (fs.statSync(path).size < 50173260) {
         let ds = [];
         inMemoryDataBase[tableName] = ds;
         let index = 0;
@@ -148,13 +151,30 @@ function build(path, tableName) {
                 columnFinishCount++;
                 if (columnFinishCount === columnNumber) {
                     buildCount++;
-                    if (buildCount === 16) {
+                    if (buildCount === buildCountTotal) {
                         //console.log(new Date().getTime() - start)
+                        builtFlag = true
+                        nextQuery()
                     }
                 }
             })
         })
     });
+}
+
+let queryArray = []
+let queryNumber = 0;
+
+function nextQuery() {
+    if (queryNumber < queryArray.length) {
+        let arg = queryArray[queryNumber++]
+        //console.log(arg[1])
+        query(...arg)
+    }
+}
+
+function addQuery(input, queryNo) {
+    queryArray.push([input, queryNo])
 }
 
 function query(input, queryNo) {
@@ -163,12 +183,12 @@ function query(input, queryNo) {
     let {joins, tables, tableIndex, filterByTable} = optimize(select, from, where, filter, metaDict);
     let acc, accIndex = {}, accLength = 0;
     let joinNum = 0;
-    //console.log(select, joins, tables, tableIndex, filterByTable, filter)
+    console.log(select, joins, tables, tableIndex, filter)
     join(joins[joinNum++]);
 
     function next() {
         if (joinNum < joins.length) {
-            //console.log(acc.length, accIndex)
+            console.log(acc.length, accIndex)
             join(joins[joinNum++])
         } else {
             // do the fucking sum!
@@ -181,6 +201,7 @@ function query(input, queryNo) {
                 if (value === 0) return '';
                 else return value
             }).join(',');
+            nextQuery()
             //console.log(queryNo,res)
             if (total === 0) {
                 queryResult.forEach((value) => {
@@ -229,16 +250,16 @@ function query(input, queryNo) {
                 }// if no same drop
             }, inMemoryDataBase, next, filterByTable[tableName2])
         } else {
-            // make sure table 1 is smaller then table 2
-            // if (metaDict[tableName].size > metaDict[tableName2].size) {
-            //     let i = tableName;
-            //     tableName = tableName2;
-            //     tableName2 = i;
-            //     i = column;
-            //     column = column2;
-            //     column2 = i
-            // }
-            // change column name to its actual position in a row
+            //make sure table 1 is smaller then table 2
+            if (metaDict[tableName].size > metaDict[tableName2].size) {
+                let i = tableName;
+                tableName = tableName2;
+                tableName2 = i;
+                i = column;
+                column = column2;
+                column2 = i
+            }
+           // change column name to its actual position in a row
             column = tableIndex[tableName][column];
             column2 = tableIndex[tableName2][column2];
 
