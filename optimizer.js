@@ -29,18 +29,18 @@ function optimize(select, from, where, filter, metaData) {
         tables[tableName] = table;
         table.add(column);
         let filters = filterByTable[tableName] || [];
-        filterByTable[tableName] = filters
+        filterByTable[tableName] = filters;
         switch (operator) {
             case '<':
                 filters.push([column, (value) => {
                     return value < target
-                }])
-                break
+                }]);
+                break;
             case '=':
                 filters.push([column, (value) => {
                     return value === target
-                }])
-                break
+                }]);
+                break;
             case '>':
                 filters.push([column, (value) => {
                     return value > target
@@ -50,12 +50,12 @@ function optimize(select, from, where, filter, metaData) {
     // store the column's position in the resulting row
     let tableIndex = {};
     for (let key in  tables) {
-        let value = tables[key]
+        let value = tables[key];
         let curIndex = {};
         tableIndex[key] = curIndex;
         let array = [...value];
         // change set to array
-        tables[key] = array
+        tables[key] = array;
         array.sort((a, b) => a > b);
         array.forEach((value, index) => {
             curIndex[value] = index
@@ -64,12 +64,13 @@ function optimize(select, from, where, filter, metaData) {
     // _.sortBy(joins, ({tableName, tableName2, column, column2}) => {
     //     return Math.min(tableMetaData[tableName].size, tableMetaData[tableName2].size)
     // });
-    return {joins, tables, tableIndex, filterByTable}
+    return {joins, tables, tableIndex, filterByTable};
 
 
     let best = {};
+    let cache = {};
 
-    function calculateJoinSize({tableName, tableName2, column, column2}) {
+    function calculateSimpleJoinSize({tableName, tableName2, column, column2}) {
 
         let meta1 = metaData[tableName];
         let meta2 = metaData[tableName2];
@@ -81,25 +82,37 @@ function optimize(select, from, where, filter, metaData) {
         let result = {size};
         result[tableName] = meta1;
         result[tableName2] = meta2;
+        let res = {size}
+        res[tableName] = meta1
+        res[tableName2] = meta2
+        cache[[tableName, tableName2].sort().join('')] = res
         return size
     }
 
-    function calculate(mid, {tableName, tableName2, column, column2}) {
-        let last = best[mid]
-        let size
-        if (!last[tableName]) {
-            let i = tableName
-            tableName = tableName2
-            tableName2 = i
-            i = column
-            column = column2
+    function calculateSize(rel, {tableName, tableName2, column, column2}) {
+        if (rel.indexOf(tableName) < 0) {
+            let i = tableName;
+            tableName = tableName2;
+            tableName2 = i;
+            i = column;
+            column = column2;
             column2 = i
         }
+        // means none of them have joined
+        if (rel.indexOf(tableName) < 0) {
+            return calculateSimpleJoinSize({tableName, tableName2, column, column2})
+        }
+        let resRel = [...rel, tableName].sort().join('');
+        if (cache[resRel]) {
+            return cache[resRel].size
+        }
+        let last = cache[rel];
+        let size;
         if (!last[tableName]) {
             size = 999999999
         } else {
-            let meta = metaData[tableName]
-            let unique = meta.unique[column]
+            let meta = metaData[tableName];
+            let unique = meta.unique[column];
             size = last.size * meta.size * Math.min(last[tableName].unique[column], unique) / (last[tableName].unique[column] * unique)
         }
 
@@ -112,20 +125,20 @@ function optimize(select, from, where, filter, metaData) {
 
 //rels is an array
     function computeBest(rels) {
-        let symbol=rels.join('')
+        let symbol = rels.join('');
         if (best[symbol]) {
             return best[symbol]
         }
-        let curr = 9999999999
-        for (r of rels) {
-            let internalOrder=computeBest(_.remove(rels,r))
-
+        let curr = 9999999999;
+        for (let r of rels) {
+            let internalOrder = computeBest(_.remove(rels, r));
+            let totalCost = internalOrder + cost(rel, r);
+            curr = Math.min(totalCost, curr)
         }
-        best[symbol]={
-
-        }
+        best[symbol] = curr
     }
-    function cost(rel,r){
+
+    function cost(rel, r) {
 
     }
 

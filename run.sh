@@ -3,4 +3,4 @@
 # python3 main.py
 # ./a.out
 #node app.js
-node --max-old-space-size=4096 app.js
+node --max-old-space-size=800 app.js

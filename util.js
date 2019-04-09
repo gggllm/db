@@ -1,6 +1,8 @@
 const _ = require("lodash");
 const fs = require('fs');
 
+let cache = {}
+
 function readFromFile(table, col) {
     let path = `./test/${table}${col}.bin`
     //console.log(fs.statSync(path).size)
@@ -11,10 +13,18 @@ function readFromFile(table, col) {
 // cb2 is for running sequentially
 
 function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
-    if (inMemoryDataBase[table]) {
+    if (cache[table]) {
+        let db = cache[table]
+        let length = db.length
+        for (let i = 0; i < length; i++) {
+            cb(db[i], i)
+        }
+        cb2 && cb2()
+    } else if (inMemoryDataBase[table]) {
         //console.log(`search ${table} in memory`);
         let db = inMemoryDataBase[table]
         let length = db.length
+        let ch = []
         for (let i = 0; i < length; i++) {
             let row = db[i]
             let flag = false
@@ -34,7 +44,9 @@ function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
                 res.writeInt32LE(getColumn(row, colums[i]), i * 4)
             }
             cb(res, i)
+            ch.push(res)
         }
+        cache[table] = ch
         cb2 && cb2()
     } else {
         //console.log(`search ${table} in disk`);
@@ -43,6 +55,7 @@ function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
         let finished = 0;
         let drop = [];
         let columnNumber = colums.length;
+        let ch = []
         filters = _.groupBy(filters, 0);
         colums.forEach((col, index) => {
             let rl = readFromFile(table, col);
@@ -82,10 +95,11 @@ function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
                     db[rowNumber] = row;
                     let size = sizeArray[rowNumber] || 0;
                     sizeArray[rowNumber] = ++size;
-                    setColumnBinary(row, index, value, cursor - 4, cursor);
+                    setColumn(row, index, value);
                     if (size === columnNumber) {
                         //console.log(row);
                         cb(row);
+                        ch.push(row)
                         db[rowNumber] = null //delete the finished row
                     }
                     rowNumber++;
@@ -96,6 +110,7 @@ function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
                 finished++;
                 if (finished === columnNumber) {
                     //console.log('finished loading data from disk');
+                    cache[table] = ch
                     cb2 && cb2()
                 }
             })
@@ -140,7 +155,7 @@ function setColumnBinary(row, column, value, start, end) {
 }
 
 function clearCache() {
-
+    cache = {}
 }
 
 function bufferForEach(buffer, cb) {
