@@ -77,16 +77,19 @@ function build(path, tableName) {
     let bufArray = [];
     let wlArray = [];
     let bufferIndexArray = [];
+    let minArray = [];
+    let maxArray = [];
+    let uniqueArray = [];
     if (fs.statSync(path).size < 50173260) {
         let ds = [];
         inMemoryDataBase[tableName] = ds;
-        let index = 0;
         let cur = [];
-        write = (item) => {
+        write = (item, index) => {
             cur.push(item);
-            index++;
-            index = index % columnNumber;
-            if (index === 0) {
+            minArray[index] = Math.min(minArray[index], item)
+            maxArray[index] = Math.max(maxArray[index], item)
+            uniqueArray[index].add(item)
+            if (index === columnNumber - 1) {
                 ds.push(arrayToBuffer(cur));
                 cur = [];
             }
@@ -122,9 +125,15 @@ function build(path, tableName) {
         lineNumber++;
         if (columnNumber === 0) {
             columnNumber = 1;
+            minArray.push(2147483647);
+            maxArray.push(-2147483648);
+            uniqueArray.push(new Set());
             for (let i = 0; i < line.length; i++) {
                 if (line.charAt(i) === ',') {
-                    columnNumber++
+                    columnNumber++;
+                    minArray.push(2147483647);
+                    maxArray.push(-2147483648);
+                    uniqueArray.push(new Set())
                 }
             }
             metaData.col = columnNumber;
@@ -158,6 +167,9 @@ function build(path, tableName) {
 
     rl.on('close', () => {
         metaData.size = lineNumber;
+        metaData.max = maxArray
+        metaData.min = minArray
+        metaData.unique = uniqueArray.map((set) => set.size)
         //console.log(new Date().getTime() - start)
         wlArray.length && wlArray.forEach((wl, index) => {
             wl.end(bufArray[index].slice(0, bufferIndexArray[index]), 'binary', () => {
@@ -187,7 +199,7 @@ function nextQuery() {
         let arg = queryArray[queryNumber++];
         //console.log(arg[1])
         // clear cache to make sure memory is clean
-        clearCache()
+        clearCache();
         query(...arg)
     } else if (total !== 0) {
         setTimeout(() => {
@@ -397,7 +409,7 @@ function query(input, queryNo) {
                         //console.log(value[column2],target)
                         if (target) {
                             target.forEach(async (row1) => {
-                                let length = row1.length / 4
+                                let length = row1.length / 4;
                                 if (lastFlag) {
                                     select.forEach((col, index) => {
                                         if (col >= length) {

@@ -4,7 +4,7 @@ function estimateCardinality() {
 
 }
 
-function optimize(select, from, where, filter, tableMetaData) {
+function optimize(select, from, where, filter, metaData) {
     let tables = {};
     let joins = [];
     select.forEach((([tableName, column]) => {
@@ -64,7 +64,72 @@ function optimize(select, from, where, filter, tableMetaData) {
     // _.sortBy(joins, ({tableName, tableName2, column, column2}) => {
     //     return Math.min(tableMetaData[tableName].size, tableMetaData[tableName2].size)
     // });
-    return {joins, tables, tableIndex,filterByTable}
+    return {joins, tables, tableIndex, filterByTable}
+
+
+    let best = {};
+
+    function calculateJoinSize({tableName, tableName2, column, column2}) {
+
+        let meta1 = metaData[tableName];
+        let meta2 = metaData[tableName2];
+        let unique1 = meta1.unique[column];
+        let size1 = meta1.size;
+        let size2 = meta2.size;
+        let unique2 = meta2.unique[column2];
+        let size = size1 * size2 / Math.min(unique1, unique2) / (unique1 * unique2);
+        let result = {size};
+        result[tableName] = meta1;
+        result[tableName2] = meta2;
+        return size
+    }
+
+    function calculate(mid, {tableName, tableName2, column, column2}) {
+        let last = best[mid]
+        let size
+        if (!last[tableName]) {
+            let i = tableName
+            tableName = tableName2
+            tableName2 = i
+            i = column
+            column = column2
+            column2 = i
+        }
+        if (!last[tableName]) {
+            size = 999999999
+        } else {
+            let meta = metaData[tableName]
+            let unique = meta.unique[column]
+            size = last.size * meta.size * Math.min(last[tableName].unique[column], unique) / (last[tableName].unique[column] * unique)
+        }
+
+    }
+
+
+    function queryOptimize(joins) {
+
+    }
+
+//rels is an array
+    function computeBest(rels) {
+        let symbol=rels.join('')
+        if (best[symbol]) {
+            return best[symbol]
+        }
+        let curr = 9999999999
+        for (r of rels) {
+            let internalOrder=computeBest(_.remove(rels,r))
+
+        }
+        best[symbol]={
+
+        }
+    }
+    function cost(rel,r){
+
+    }
+
 }
+
 
 module.exports = optimize;
