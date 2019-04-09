@@ -8,7 +8,7 @@ const readFileByLine = require('./readFileByLine');
 const block_size = (fs.statSync('./app.js').blksize || 4096);
 const buffer_size = block_size * 4;
 // 6000000 can pass small
-const MAX_ROW = 6000000;
+const MAX_ROW = 30000000;
 
 let builtFlag = false;
 const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
@@ -216,6 +216,11 @@ function query(input, queryNo) {
         let accIndex = {};
         let accLength = 0;
         joins.forEach(({tableName, tableName2, column, column2}) => {
+            if (metaDict[tableName].size > metaDict[tableName2].size) {
+                let i = tableName;
+                tableName = tableName2;
+                tableName2 = i;
+            }
             if (!accIndex[tableName]) {
                 addIndex(tableName)
             }
@@ -360,16 +365,16 @@ function query(input, queryNo) {
             }))
         } else {
             return new Promise(resolve => {
-                // //make sure table 1 is smaller then table 2
-                // if (metaDict[tableName].size > metaDict[tableName2].size) {
-                //     let i = tableName;
-                //     tableName = tableName2;
-                //     tableName2 = i;
-                //     i = column;
-                //     column = column2;
-                //     column2 = i
-                // }
-                // change column name to its actual position in a row
+                //make sure table 1 is smaller then table 2
+                if (metaDict[tableName].size > metaDict[tableName2].size) {
+                    let i = tableName;
+                    tableName = tableName2;
+                    tableName2 = i;
+                    i = column;
+                    column = column2;
+                    column2 = i
+                }
+                //change column name to its actual position in a row
                 column = tableIndex[tableName][column];
                 column2 = tableIndex[tableName2][column2];
 

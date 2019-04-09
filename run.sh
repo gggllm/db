@@ -2,5 +2,5 @@
 # java Driver
 # python3 main.py
 # ./a.out
-#node --max-old-space-size=4096 app.js
-node app.js
+#node app.js
+node --max-old-space-size=4096 app.js
