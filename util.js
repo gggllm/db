@@ -13,19 +13,28 @@ function readFromFile(table, col) {
 function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
     if (inMemoryDataBase[table]) {
         //console.log(`search ${table} in memory`);
-        _(inMemoryDataBase[table]).filter((row) => {
+        let db = inMemoryDataBase[table]
+        let length = db.length
+        for (let i = 0; i < length; i++) {
+            let row = db[i]
+            let flag = false
             for (let i in filters) {
                 let [column, filter] = filters[i]
-                if (!filter(row[column])) {
-                    return false
+                if (!filter(getColumn(row, column))) {
+                    flag = true
+                    break
                 }
             }
-            return true
-        }).map((value) => {
-            return colums.map((column => {
-                return value[column]
-            }))
-        }).forEach(cb);
+            if (flag) {
+                continue
+            }
+            let length2 = colums.length
+            let res = Buffer.allocUnsafe(length2 * 4)
+            for (let i = 0; i < length2; i++) {
+                res.writeInt32LE(getColumn(row,colums[i]), i * 4)
+            }
+            cb(res, i)
+        }
         cb2 && cb2()
     } else {
         //console.log(`search ${table} in disk`);
@@ -69,11 +78,11 @@ function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
                         rowNumber++;
                         continue
                     }
-                    let row = db[rowNumber] || [];
+                    let row = db[rowNumber] || Buffer.allocUnsafe(columnNumber * 4);
                     db[rowNumber] = row;
                     let size = sizeArray[rowNumber] || 0;
                     sizeArray[rowNumber] = ++size;
-                    row[index] = value;
+                    setColumn(row, index, value);
                     if (size === columnNumber) {
                         //console.log(row);
                         cb(row);
@@ -98,5 +107,41 @@ function write(table, tableName, inMemoryDatabase) {
     inMemoryDatabase[tableName] = table
 }
 
+function arrayToBuffer(array) {
+    let length = array.length;
+    let buffer = Buffer.allocUnsafe(length * 4);
+    for (let i = 0; i < length; i++) {
+        buffer.writeInt32LE(array[i], i * 4)
+    }
+    return buffer
+}
 
-module.exports = {get, write};
+function bufferToArray(buffer) {
+    let index = 0;
+    let length = buffer.length;
+    let res = []
+    while (index * 4 < length) {
+        res.push(buffer.readInt32LE(index * 4));
+        index++
+    }
+    return res
+}
+
+function getColumn(row, column) {
+    return row.readInt32LE(column * 4)
+}
+
+function setColumn(row, column, value) {
+    row.writeInt32LE(value, column * 4)
+}
+
+function bufferForEach(buffer, cb) {
+    let index = 0;
+    let length = buffer.length;
+    while (index < length) {
+        cb(buffer.readInt32LE(index * 4), index);
+        index++
+    }
+}
+
+module.exports = {get, write, arrayToBuffer, getColumn, bufferForEach, bufferToArray};

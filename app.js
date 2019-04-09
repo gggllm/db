@@ -1,15 +1,15 @@
 const _ = require('lodash');
 const fs = require('fs');
-const {get, write} = require('./util');
+const {get, write, arrayToBuffer, bufferForEach, getColumn, bufferToArray} = require('./util');
 const parse = require('./parser');
 const optimize = require('./optimizer');
 const readFileByLine = require('./readFileByLine');
 // multiply by 4 to make sure it can fit by integer without padding
 const block_size = (fs.statSync('./app.js').blksize || 4096);
 const buffer_size = block_size * 4;
-const MAXROW = 1000000
+// 6000000 can pass small
+const MAX_ROW = 30000000;
 
-let start = new Date().getTime();
 let builtFlag = false;
 const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
 
@@ -87,7 +87,7 @@ function build(path, tableName) {
             index++;
             index = index % columnNumber;
             if (index === 0) {
-                ds.push(cur);
+                ds.push(arrayToBuffer(cur));
                 cur = [];
             }
         }
@@ -211,7 +211,7 @@ function query(input, queryNo) {
             accLength += tables[tableName].length
         }
 
-        let accIndex = {}
+        let accIndex = {};
         let accLength = 0;
         joins.forEach(({tableName, tableName2, column, column2}) => {
             if (!accIndex[tableName]) {
@@ -220,7 +220,7 @@ function query(input, queryNo) {
             if (!accIndex[tableName2]) {
                 addIndex(tableName2)
             }
-        })
+        });
         return accIndex
     }
 
@@ -243,62 +243,49 @@ function query(input, queryNo) {
     });
     select = select.map(([table, col]) => {
         return accIndex[table][col]
-    })
-    let globalQueue = []
-    let globalQueueIndex = 0
-    next(0);
-
-    function next(joinNum, acc, joined = []) {
-        if (joinNum < joins.length) {
-            join(joins[joinNum], joined, acc, joinNum)
-        } else {
-            // current pipeline is over
-
-            // all data is processed ????
-            if (globalQueue.length === globalQueueIndex) {
-                total--;
-                queryResult[queryNo] = result.map((value) => {
-                    if (value === 0) return '';
-                    else return value
-                }).join(',');
-                //console.log(queryNo, result)
-                nextQuery();
-                if (total === 0) {
-                    queryResult.forEach((value) => {
-                        //console.log(value)
-                        //console.log(acc.length)
-                        process.stdout.write(value + '\n')
-                    });
-                    process.exit()
-                }
-            } else {
-                globalQueue[globalQueueIndex++]()
+    });
+    next(0).then(() => {// current pipeline is over
+        // all data is processed ????
+        total--;
+        let emptyFlag = true;
+        for (let i = 0; i < result.length; i++) {
+            if (result[i] !== 0) {
+                emptyFlag = false;
+                break
             }
+        }
+        if (emptyFlag) {
+            result = result.map(() => '')
+        }
+        queryResult[queryNo] = result.join(',');
+        //console.log(queryNo, result)
+        nextQuery();
+        if (total === 0) {
+            queryResult.forEach((value) => {
+                //console.log(value)
+                //console.log(acc.length)
+                process.stdout.write(value + '\n')
+            });
+            process.exit()
+        }
+    });
+
+    async function next(joinNum, acc, joined = {}) {
+        if (joinNum < joins.length) {
+            return join(joins[joinNum], joined, acc, joinNum)
         }
     }
 
+    async function join({tableName, tableName2, column, column2}, joined, acc, joinNum) {
 
-    function join({tableName, tableName2, column, column2}, joined, acc, joinNum) {
-        let pipeData = []
-        let pipeDataIndex = 0
-        let pipingFlag = false
-
-        function pipe(data) {
-            if (pipingFlag) {
-                pipeData.push(data);
+        async function pipe(data) {
+            if (data.length === 0) {
+                return
             }
-            next(joinNum + 1, data, joined)
-            pipingFlag = true
-            globalQueue.push(() => {
-                pipingFlag = false
-                //more data to go
-                if (pipeDataIndex < pipeData.length) {
-                    pipe(pipeData[pipeDataIndex++])
-                }
-            })
+            return next(joinNum + 1, data, _.clone(joined));
         }
 
-        let lastFlag = false
+        let lastFlag = false;
         if (joinNum === joins.length - 1) {
             lastFlag = true;
         }
@@ -312,94 +299,120 @@ function query(input, queryNo) {
                 column2 = accIndex[tableName2][column2];
                 if (lastFlag) {
                     acc.forEach((row) => {
-                        if (row[column] === row[column2]) {
+                        if (getColumn(row, column) === getColumn(row, column2)) {
                             select.forEach((col, index) => {
-                                result[index] += row[col]
+                                result[index] += getColumn(row, col)
                             })
                         }
                     })
                 } else {
                     acc = acc.filter((row) => {
-                        return row[column] === row[column2]
+                        return getColumn(row, column) === getColumn(row, column2)
                     });
                 }
-                next(joinNum + 1, acc, joined);
-                return
+                return pipe(acc);
             }
-            if (!isJoined(joined, tableName)) {
-                let i = tableName;
-                tableName = tableName2;
-                tableName2 = i;
-                i = column;
-                column = column2;
-                column2 = i
-            }
-            column = accIndex[tableName][column];
-            column2 = tableIndex[tableName2][column2];
-            addJoin(joined, tableName2);
-            let db1 = _.groupBy(acc, column);
-            acc = [];
-            get(tableName2, tables[tableName2], (value, index) => {
-                // if found the target, we just store the relationship we need
-                let target = db1[value[column2]];
-                if (target) {
-                    target.forEach((row1) => {
-                        let cur = [...row1, ...value];
-                        if (lastFlag) {
-                            select.forEach((col, index) => {
-                                result[index] += cur[col]
-                            })
-                        } else {
-                            acc.push(cur)
-                        }
-                    })
-                }// if no same drop
-            }, inMemoryDataBase, () => next(joinNum + 1, acc, joined), filterByTable[tableName2])
-        } else {
-            // //make sure table 1 is smaller then table 2
-            // if (metaDict[tableName].size > metaDict[tableName2].size) {
-            //     let i = tableName;
-            //     tableName = tableName2;
-            //     tableName2 = i;
-            //     i = column;
-            //     column = column2;
-            //     column2 = i
-            // }
-            // change column name to its actual position in a row
-            column = tableIndex[tableName][column];
-            column2 = tableIndex[tableName2][column2];
-
-            let db1 = new Map();
-            acc = [];
-            // calculate the new acc index
-            addJoin(joined, tableName);
-            addJoin(joined, tableName2);
-
-            get(tableName, tables[tableName], (value, index) => {
-                //console.log(value)
-                let val = value[column];
-                let list = db1.get(val) || [];
-                list.push(value);
-                db1.set(val, list)
-            }, inMemoryDataBase, () => {
+            return new Promise((resolve => {
+                if (!isJoined(joined, tableName)) {
+                    let i = tableName;
+                    tableName = tableName2;
+                    tableName2 = i;
+                    i = column;
+                    column = column2;
+                    column2 = i
+                }
+                column = accIndex[tableName][column];
+                column2 = tableIndex[tableName2][column2];
+                addJoin(joined, tableName2);
+                let db1 = _.groupBy(acc, (row) => {
+                    return getColumn(row, column)
+                });
+                acc = [];
                 get(tableName2, tables[tableName2], (value, index) => {
                     // if found the target, we just store the relationship we need
-                    let target = db1.get(value[column2]);
-                    //console.log(value[column2],target)
+                    let target = db1[getColumn(value, column2)];
                     if (target) {
-                        target.forEach((row1) => {
-                            let cur = [...row1, ...value];
+                        target.forEach(async (row1) => {
+                            let length = row1.length / 4;
                             if (lastFlag) {
                                 select.forEach((col, index) => {
-                                    result[index] += cur[col]
+                                    if (col >= length) {
+                                        result[index] += getColumn(value, col - length)
+                                    } else {
+                                        result[index] += getColumn(row1, col)
+                                    }
                                 })
                             } else {
-                                acc.push(cur)
+                                let cur = Buffer.concat([row1, value]);
+                                acc.push(cur);
+                                if (acc.length > MAX_ROW) {
+                                    await pipe(acc);
+                                    acc = []
+                                }
                             }
                         })
                     }// if no same drop
-                }, inMemoryDataBase, () => next(joinNum + 1, acc, joined), filterByTable[tableName2])
-            }, filterByTable[tableName])
+                }, inMemoryDataBase, async () => {
+                    resolve(pipe(acc))
+                }, filterByTable[tableName2])
+            }))
+        } else {
+            return new Promise(resolve => {
+                // //make sure table 1 is smaller then table 2
+                // if (metaDict[tableName].size > metaDict[tableName2].size) {
+                //     let i = tableName;
+                //     tableName = tableName2;
+                //     tableName2 = i;
+                //     i = column;
+                //     column = column2;
+                //     column2 = i
+                // }
+                // change column name to its actual position in a row
+                column = tableIndex[tableName][column];
+                column2 = tableIndex[tableName2][column2];
+
+                let db1 = new Map();
+                acc = [];
+                // calculate the new acc index
+                addJoin(joined, tableName);
+                addJoin(joined, tableName2);
+
+                get(tableName, tables[tableName], (value, index) => {
+                    //console.log(value)
+                    let val = getColumn(value, column);
+                    let list = db1.get(val) || [];
+                    list.push(value);
+                    db1.set(val, list)
+                }, inMemoryDataBase, () => {
+                    get(tableName2, tables[tableName2], (value, index) => {
+                        // if found the target, we just store the relationship we need
+                        let target = db1.get(getColumn(value, column2));
+                        //console.log(value[column2],target)
+                        if (target) {
+                            target.forEach(async (row1) => {
+                                let length = row1.length / 4
+                                if (lastFlag) {
+                                    select.forEach((col, index) => {
+                                        if (col >= length) {
+                                            result[index] += getColumn(value, col - length)
+                                        } else {
+                                            result[index] += getColumn(row1, col)
+                                        }
+                                    })
+                                } else {
+                                    acc.push(Buffer.concat([row1, value]));
+                                    if (acc.length > MAX_ROW) {
+                                        await pipe(acc);
+                                        acc = []
+                                    }
+                                }
+                            })
+                        }// if no same drop
+                    }, inMemoryDataBase, async () => {
+                        resolve(pipe(acc))
+                    }, filterByTable[tableName2])
+                }, filterByTable[tableName])
+            })
         }
     }
 }
