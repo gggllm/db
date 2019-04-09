@@ -31,7 +31,7 @@ function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
             let length2 = colums.length
             let res = Buffer.allocUnsafe(length2 * 4)
             for (let i = 0; i < length2; i++) {
-                res.writeInt32LE(getColumn(row,colums[i]), i * 4)
+                res.writeInt32LE(getColumn(row, colums[i]), i * 4)
             }
             cb(res, i)
         }
@@ -82,7 +82,7 @@ function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
                     db[rowNumber] = row;
                     let size = sizeArray[rowNumber] || 0;
                     sizeArray[rowNumber] = ++size;
-                    setColumn(row, index, value);
+                    setColumnBinary(row, index, value, cursor - 4, cursor);
                     if (size === columnNumber) {
                         //console.log(row);
                         cb(row);
@@ -135,6 +135,14 @@ function setColumn(row, column, value) {
     row.writeInt32LE(value, column * 4)
 }
 
+function setColumnBinary(row, column, value, start, end) {
+    row.copy(value, column * 4, start, end)
+}
+
+function clearCache() {
+
+}
+
 function bufferForEach(buffer, cb) {
     let index = 0;
     let length = buffer.length;
@@ -144,4 +152,4 @@ function bufferForEach(buffer, cb) {
     }
 }
 
-module.exports = {get, write, arrayToBuffer, getColumn, bufferForEach, bufferToArray};
+module.exports = {get, write, arrayToBuffer, getColumn, bufferForEach, bufferToArray, clearCache};

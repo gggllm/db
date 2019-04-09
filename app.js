@@ -1,6 +1,6 @@
 const _ = require('lodash');
 const fs = require('fs');
-const {get, write, arrayToBuffer, bufferForEach, getColumn, bufferToArray} = require('./util');
+const {get, write, arrayToBuffer, bufferForEach, getColumn, bufferToArray, clearCache} = require('./util');
 const parse = require('./parser');
 const optimize = require('./optimizer');
 const readFileByLine = require('./readFileByLine');
@@ -186,6 +186,8 @@ function nextQuery() {
     if (queryNumber < queryArray.length) {
         let arg = queryArray[queryNumber++];
         //console.log(arg[1])
+        // clear cache to make sure memory is clean
+        clearCache()
         query(...arg)
     } else if (total !== 0) {
         setTimeout(() => {
