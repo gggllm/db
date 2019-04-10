@@ -20,7 +20,7 @@ function optimize(select, from, where, filter, metaData) {
         tables[tableName2] = table2;
         table2.add(column2);
         joins.push({
-            tableName, tableName2, column, column2
+            tableName, tableName2, columns: column, columns2: column2
         })
     }));
     let filterByTable = {};
@@ -70,52 +70,59 @@ function optimize(select, from, where, filter, metaData) {
     let best = {};
     let cache = {};
 
-    function calculateSimpleJoinSize({tableName, tableName2, column, column2}) {
+    function calculateSimpleJoinSize({tableName, tableName2, columns, columns2}) {
 
         let meta1 = metaData[tableName];
         let meta2 = metaData[tableName2];
-        let unique1 = meta1.unique[column];
         let size1 = meta1.size;
         let size2 = meta2.size;
-        let unique2 = meta2.unique[column2];
-        let size = size1 * size2 / Math.min(unique1, unique2) / (unique1 * unique2);
+        let size = size1 * size2;
+        columns.forEach((column, index) => {
+            let column2 = columns2[index];
+            let unique1 = meta1.unique[column];
+            let unique2 = meta2.unique[column2];
+            size = size * Math.min(unique1, unique2) / (unique1 * unique2);
+        });
         let result = {size};
         result[tableName] = meta1;
         result[tableName2] = meta2;
-        let res = {size}
-        res[tableName] = meta1
-        res[tableName2] = meta2
-        cache[[tableName, tableName2].sort().join('')] = res
+        let res = {size};
+        res[tableName] = meta1;
+        res[tableName2] = meta2;
+        cache[[tableName, tableName2].sort().join('')] = res;
         return size
     }
 
-    function calculateSize(rel, {tableName, tableName2, column, column2}) {
+    function calculateSize(rel, {tableName, tableName2, columns, columns2}) {
         if (rel.indexOf(tableName) < 0) {
             let i = tableName;
             tableName = tableName2;
             tableName2 = i;
-            i = column;
-            column = column2;
-            column2 = i
+            i = columns;
+            columns = columns2;
+            columns2 = i
         }
         // means none of them have joined
         if (rel.indexOf(tableName) < 0) {
-            return calculateSimpleJoinSize({tableName, tableName2, column, column2})
+            return calculateSimpleJoinSize({tableName, tableName2, columns, columns2})
         }
-        let resRel = [...rel, tableName].sort().join('');
+        let resRel = [...rel, tableName2].sort().join('');
         if (cache[resRel]) {
             return cache[resRel].size
         }
         let last = cache[rel];
-        let size;
-        if (!last[tableName]) {
-            size = 999999999
-        } else {
-            let meta = metaData[tableName];
+        let meta = metaData[tableName2];
+        let size = last.size * meta.size;
+        columns2.forEach((column2, index) => {
+            let column = columns[index];
             let unique = meta.unique[column];
-            size = last.size * meta.size * Math.min(last[tableName].unique[column], unique) / (last[tableName].unique[column] * unique)
-        }
-
+            let unique2 = last[tableName].unique[column];
+            size = size * Math.min(unique2, unique) / (unique2 * unique)
+        });
+        let res = {...last, size};
+        res[tableName2] = meta;
+        cache[resRel] = res;
+        return size
     }
 
 

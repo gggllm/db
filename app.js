@@ -8,7 +8,7 @@ const readFileByLine = require('./readFileByLine');
 const block_size = (fs.statSync('./app.js').blksize || 4096);
 const buffer_size = block_size * 4;
 // 6000000 can pass small
-const MAX_ROW = 4000000;
+const MAX_ROW = 6000000;
 
 let builtFlag = false;
 const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
@@ -227,7 +227,7 @@ function query(input, queryNo) {
 
         let accIndex = {};
         let accLength = 0;
-        joins.forEach(({tableName, tableName2, column, column2}) => {
+        joins.forEach(({tableName, tableName2, columns, columns2}) => {
             if (metaDict[tableName].size > metaDict[tableName2].size) {
                 let i = tableName;
                 tableName = tableName2;
@@ -295,7 +295,7 @@ function query(input, queryNo) {
         }
     }
 
-    async function join({tableName, tableName2, column, column2}, joined, acc, joinNum) {
+    async function join({tableName, tableName2, columns, columns2}, joined, acc, joinNum) {
 
         async function pipe(data) {
             if (data.length === 0) {
@@ -311,102 +311,53 @@ function query(input, queryNo) {
 
         //console.log(tableName, tableName2)
         // make sure table1 is in the acc
-        if (isJoined(joined, tableName) || isJoined(joined, tableName2)) {
-            // only do filter in this situation
-            if (isJoined(joined, tableName) && isJoined(joined, tableName2)) {
-                column = accIndex[tableName][column];
-                column2 = accIndex[tableName2][column2];
-                if (lastFlag) {
-                    acc.forEach((row) => {
-                        if (getColumn(row, column) === getColumn(row, column2)) {
-                            select.forEach((col, index) => {
-                                result[index] += getColumn(row, col)
-                            })
-                        }
-                    })
-                } else {
-                    acc = acc.filter((row) => {
-                        return getColumn(row, column) === getColumn(row, column2)
-                    });
-                }
-                return pipe(acc);
-            }
-            return new Promise((resolve => {
-                if (!isJoined(joined, tableName)) {
-                    let i = tableName;
-                    tableName = tableName2;
-                    tableName2 = i;
-                    i = column;
-                    column = column2;
-                    column2 = i
-                }
-                column = accIndex[tableName][column];
-                column2 = tableIndex[tableName2][column2];
-                addJoin(joined, tableName2);
-                let db1 = _.groupBy(acc, (row) => {
-                    return getColumn(row, column)
-                });
-                acc = [];
-                get(tableName2, tables[tableName2], (value, index) => {
-                    // if found the target, we just store the relationship we need
-                    let target = db1[getColumn(value, column2)];
-                    if (target) {
-                        target.forEach(async (row1) => {
-                            let length = row1.length / 4;
-                            if (lastFlag) {
-                                select.forEach((col, index) => {
-                                    if (col >= length) {
-                                        result[index] += getColumn(value, col - length)
-                                    } else {
-                                        result[index] += getColumn(row1, col)
-                                    }
-                                })
-                            } else {
-                                let cur = Buffer.concat([row1, value]);
-                                acc.push(cur);
-                                if (acc.length > MAX_ROW) {
-                                    await pipe(acc);
-                                    acc = []
+        if (columns.push) {
+            if (isJoined(joined, tableName) || isJoined(joined, tableName2)) {
+                // only do filter in this situation
+                if (isJoined(joined, tableName) && isJoined(joined, tableName2)) {
+                    columns = columns.map((column) => accIndex[tableName][column]);
+                    columns2 = columns2.map((column => accIndex[tableName2][column]));
+                    if (lastFlag) {
+                        acc.forEach((row) => {
+                            columns.forEach((column, index) => {
+                                let column2 = columns2[index]
+                                if (getColumn(row, column) === getColumn(row, column2)) {
+                                    select.forEach((col, index) => {
+                                        result[index] += getColumn(row, col)
+                                    })
                                 }
-                            }
+                            })
                         })
-                    }// if no same drop
-                }, inMemoryDataBase, async () => {
-                    resolve(pipe(acc))
-                }, filterByTable[tableName2])
-            }))
-        } else {
-            return new Promise(resolve => {
-                //make sure table 1 is smaller then table 2
-                if (metaDict[tableName].size > metaDict[tableName2].size) {
-                    let i = tableName;
-                    tableName = tableName2;
-                    tableName2 = i;
-                    i = column;
-                    column = column2;
-                    column2 = i
+                    } else {
+                        acc = acc.filter((row) => {
+                            for (let index = 0; index < columns.length; index++) {
+                                let column = columns[index]
+                                let column2 = columns2[index]
+                                return getColumn(row, column) === getColumn(row, column2)
+                            }
+                        });
+                    }
+                    return pipe(acc);
                 }
-                //change column name to its actual position in a row
-                column = tableIndex[tableName][column];
-                column2 = tableIndex[tableName2][column2];
-
-                let db1 = new Map();
-                acc = [];
-                // calculate the new acc index
-                addJoin(joined, tableName);
-                addJoin(joined, tableName2);
-
-                get(tableName, tables[tableName], (value, index) => {
-                    //console.log(value)
-                    let val = getColumn(value, column);
-                    let list = db1.get(val) || [];
-                    list.push(value);
-                    db1.set(val, list)
-                }, inMemoryDataBase, () => {
+                return new Promise((resolve => {
+                    if (!isJoined(joined, tableName)) {
+                        let i = tableName;
+                        tableName = tableName2;
+                        tableName2 = i;
+                        i = columns;
+                        columns = columns2;
+                        columns2 = i
+                    }
+                    columns = columns.map((column) => accIndex[tableName][column]);
+                    columns2 = columns2.map((column => tableIndex[tableName2][column]));
+                    addJoin(joined, tableName2);
+                    let db1 = _.groupBy(acc, (row) => {
+                        return _(columns).map((column) => getColumn(row, column)).join(',')
+                    });
+                    acc = [];
                     get(tableName2, tables[tableName2], (value, index) => {
                         // if found the target, we just store the relationship we need
-                        let target = db1.get(getColumn(value, column2));
-                        //console.log(value[column2],target)
+                        let target = db1[_(columns2).map((column) => getColumn(value, column)).join(',')];
                         if (target) {
                             target.forEach(async (row1) => {
                                 let length = row1.length / 4;
@@ -419,7 +370,8 @@ function query(input, queryNo) {
                                         }
                                     })
                                 } else {
-                                    acc.push(Buffer.concat([row1, value]));
+                                    let cur = Buffer.concat([row1, value]);
+                                    acc.push(cur);
                                     if (acc.length > MAX_ROW) {
                                         await pipe(acc);
                                         acc = []
@@ -430,8 +382,188 @@ function query(input, queryNo) {
                     }, inMemoryDataBase, async () => {
                         resolve(pipe(acc))
                     }, filterByTable[tableName2])
-                }, filterByTable[tableName])
-            })
+                }))
+            } else {
+                return new Promise(resolve => {
+                    //make sure table 1 is smaller then table 2
+                    if (metaDict[tableName].size > metaDict[tableName2].size) {
+                        let i = tableName;
+                        tableName = tableName2;
+                        tableName2 = i;
+                        i = columns;
+                        columns = columns2;
+                        columns2 = i
+                    }
+                    //change column name to its actual position in a row
+                    columns = columns.map((column) => tableIndex[tableName][column]);
+                    columns2 = columns2.map((column => tableIndex[tableName2][column]));
+
+                    let db1 = new Map();
+                    acc = [];
+                    // calculate the new acc index
+                    addJoin(joined, tableName);
+                    addJoin(joined, tableName2);
+
+                    get(tableName, tables[tableName], (value, index) => {
+                        //console.log(value)
+                        let val = _(columns).map((column) => getColumn(value, column)).join(',');
+                        let list = db1.get(val) || [];
+                        list.push(value);
+                        db1.set(val, list)
+                    }, inMemoryDataBase, () => {
+                        get(tableName2, tables[tableName2], (value, index) => {
+                            // if found the target, we just store the relationship we need
+                            let target = db1.get(_(columns2).map((column) => getColumn(value, column)).join(','));
+                            //console.log(value[column2],target)
+                            if (target) {
+                                target.forEach(async (row1) => {
+                                    let length = row1.length / 4;
+                                    if (lastFlag) {
+                                        select.forEach((col, index) => {
+                                            if (col >= length) {
+                                                result[index] += getColumn(value, col - length)
+                                            } else {
+                                                result[index] += getColumn(row1, col)
+                                            }
+                                        })
+                                    } else {
+                                        acc.push(Buffer.concat([row1, value]));
+                                        if (acc.length > MAX_ROW) {
+                                            await pipe(acc);
+                                            acc = []
+                                        }
+                                    }
+                                })
+                            }// if no same drop
+                        }, inMemoryDataBase, async () => {
+                            resolve(pipe(acc))
+                        }, filterByTable[tableName2])
+                    }, filterByTable[tableName])
+                })
+            }
+        } else {
+            if (isJoined(joined, tableName) || isJoined(joined, tableName2)) {
+                // only do filter in this situation
+                if (isJoined(joined, tableName) && isJoined(joined, tableName2)) {
+                    let column = accIndex[tableName][columns]
+                    let column2 = accIndex[tableName2][columns2]
+                    if (lastFlag) {
+                        acc.forEach((row) => {
+                            if (getColumn(row, column) === getColumn(row, column2)) {
+                                select.forEach((col, index) => {
+                                    result[index] += getColumn(row, col)
+                                })
+                            }
+                        })
+                    } else {
+                        acc = acc.filter((row) => {
+                            return getColumn(row, column) === getColumn(row, column2)
+                        });
+                    }
+                    return pipe(acc);
+                }
+                return new Promise((resolve => {
+                    if (!isJoined(joined, tableName)) {
+                        let i = tableName;
+                        tableName = tableName2;
+                        tableName2 = i;
+                        i = columns;
+                        columns = columns2;
+                        columns2 = i
+                    }
+                    let column = accIndex[tableName][columns];
+                    let column2 = tableIndex[tableName2][columns2];
+                    addJoin(joined, tableName2);
+                    let db1 = _.groupBy(acc, (row) => {
+                        return getColumn(row, column)
+                    });
+                    acc = [];
+                    get(tableName2, tables[tableName2], (value, index) => {
+                        // if found the target, we just store the relationship we need
+                        let target = db1[getColumn(value, column2)];
+                        if (target) {
+                            target.forEach(async (row1) => {
+                                let length = row1.length / 4;
+                                if (lastFlag) {
+                                    select.forEach((col, index) => {
+                                        if (col >= length) {
+                                            result[index] += getColumn(value, col - length)
+                                        } else {
+                                            result[index] += getColumn(row1, col)
+                                        }
+                                    })
+                                } else {
+                                    let cur = Buffer.concat([row1, value]);
+                                    acc.push(cur);
+                                    if (acc.length > MAX_ROW) {
+                                        await pipe(acc);
+                                        acc = []
+                                    }
+                                }
+                            })
+                        }// if no same drop
+                    }, inMemoryDataBase, async () => {
+                        resolve(pipe(acc))
+                    }, filterByTable[tableName2])
+                }))
+            } else {
+                return new Promise(resolve => {
+                    //make sure table 1 is smaller then table 2
+                    if (metaDict[tableName].size > metaDict[tableName2].size) {
+                        let i = tableName;
+                        tableName = tableName2;
+                        tableName2 = i;
+                        i = columns;
+                        columns = columns2;
+                        columns2 = i
+                    }
+                    //change column name to its actual position in a row
+                    let column = tableIndex[tableName][columns];
+                    let column2 = tableIndex[tableName2][columns2];
+
+                    let db1 = new Map();
+                    acc = [];
+                    // calculate the new acc index
+                    addJoin(joined, tableName);
+                    addJoin(joined, tableName2);
+
+                    get(tableName, tables[tableName], (value, index) => {
+                        //console.log(value)
+                        let val = getColumn(value, column);
+                        let list = db1.get(val) || [];
+                        list.push(value);
+                        db1.set(val, list)
+                    }, inMemoryDataBase, () => {
+                        get(tableName2, tables[tableName2], (value, index) => {
+                            // if found the target, we just store the relationship we need
+                            let target = db1.get(getColumn(value, column2));
+                            //console.log(value[column2],target)
+                            if (target) {
+                                target.forEach(async (row1) => {
+                                    let length = row1.length / 4;
+                                    if (lastFlag) {
+                                        select.forEach((col, index) => {
+                                            if (col >= length) {
+                                                result[index] += getColumn(value, col - length)
+                                            } else {
+                                                result[index] += getColumn(row1, col)
+                                            }
+                                        })
+                                    } else {
+                                        acc.push(Buffer.concat([row1, value]));
+                                        if (acc.length > MAX_ROW) {
+                                            await pipe(acc);
+                                            acc = []
+                                        }
+                                    }
+                                })
+                            }// if no same drop
+                        }, inMemoryDataBase, async () => {
+                            resolve(pipe(acc))
+                        }, filterByTable[tableName2])
+                    }, filterByTable[tableName])
+                })
+            }
         }
     }
 }
