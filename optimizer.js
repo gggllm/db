@@ -39,43 +39,45 @@ function optimize(select, from, where, filter, metaData) {
         }
         return 999999999
     }
+    //Todo
+    function calculateSize(rel, joins) {
+        joins.forEach(({tableName, tableName2, columns, columns2}) => {
+            // transform to array
+            if (!columns.push) {
+                columns = [columns];
+                columns2 = [columns2]
+            }
+            if (rel.length === 1) {
+                return calculateSimpleJoinSize({tableName, tableName2, columns, columns2})
+            }
+            if (rel.indexOf(tableName) < 0) {
+                let i = tableName;
+                tableName = tableName2;
+                tableName2 = i;
+                i = columns;
+                columns = columns2;
+                columns2 = i
+            }
 
-    function calculateSize(rel, {tableName, tableName2, columns, columns2}) {
-        // transform to array
-        if (!columns.push) {
-            columns = [columns];
-            columns2 = [columns2]
-        }
-        if (rel.length === 1) {
-            return calculateSimpleJoinSize({tableName, tableName2, columns, columns2})
-        }
-        if (rel.indexOf(tableName) < 0) {
-            let i = tableName;
-            tableName = tableName2;
-            tableName2 = i;
-            i = columns;
-            columns = columns2;
-            columns2 = i
-        }
-
-        let resRel = [...rel, tableName2].sort().join('');
-        if (cache[resRel]) {
-            let cr = cache[resRel];
-            return cr.size
-        }
-        let last = getCache(rel.join(''));
-        // cannot reach
-        if (!last.size) {
-            return last
-        }
-        let meta = metaData[tableName2];
-        let size = last.size * meta.size;
-        columns2.forEach((column2, index) => {
-            let column = columns[index];
-            let unique = meta.unique[column];
-            let unique2 = last[tableName].unique[column];
-            size = size * Math.min(unique2, unique) / (unique2 * unique)
-        });
+            let resRel = [...rel, tableName2].sort().join('');
+            if (cache[resRel]) {
+                let cr = cache[resRel];
+                return cr.size
+            }
+            let last = getCache(rel.join(''));
+            // cannot reach
+            if (!last.size) {
+                return last
+            }
+            let meta = metaData[tableName2];
+            let size = last.size * meta.size;
+            columns2.forEach((column2, index) => {
+                let column = columns[index];
+                let unique = meta.unique[column];
+                let unique2 = last[tableName].unique[column];
+                size = size * Math.min(unique2, unique) / (unique2 * unique)
+            });
+        })
         let res = {...last, size};
         res[tableName2] = meta;
         cache[resRel] = res;
@@ -129,14 +131,14 @@ function optimize(select, from, where, filter, metaData) {
             return 9999999
         }
         // still problematic
-        return calculateSize(rel, join[0])
+        return calculateSize(rel, join)
     }
 
     function bestToJoins(best) {
         let rel = [best[0]];
         let joins = [];
         while (rel.length < best.length) {
-            joins = _.concat(joins, getJoin(rel, best[rel.length]));
+            joins.push(getJoin(rel, best[rel.length]));
             rel.push(best[rel.length])
         }
         return joins
