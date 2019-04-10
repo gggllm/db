@@ -8,7 +8,7 @@ const readFileByLine = require('./readFileByLine');
 const block_size = (fs.statSync('./app.js').blksize || 4096);
 const buffer_size = block_size * 4;
 // 6000000 can pass small
-const MAX_ROW = 30000000;
+const MAX_ROW = 3000000;
 
 let builtFlag = false;
 const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
@@ -102,7 +102,7 @@ function build(path, tableName) {
             buf.writeInt32LE(item, bufferIndex);
             minArray[index] = Math.min(minArray[index], item)
             maxArray[index] = Math.max(maxArray[index], item)
-            uniqueArray[index].add(item)
+            //uniqueArray[index].add(item)
             bufferIndex += 4;
             // can be done using ==== because we manually set it to 4 times
             if (bufferIndex === buffer_size) {
@@ -172,7 +172,8 @@ function build(path, tableName) {
         metaData.size = lineNumber;
         metaData.max = maxArray
         metaData.min = minArray
-        metaData.unique = uniqueArray.map((set) => set.size)
+        // remove unique calculation to boost
+        metaData.unique = uniqueArray.map((set,index) => set.size || metaData.size)
         //console.log(new Date().getTime() - start)
         wlArray.length && wlArray.forEach((wl, index) => {
             wl.end(bufArray[index].slice(0, bufferIndexArray[index]), 'binary', () => {

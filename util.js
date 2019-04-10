@@ -99,7 +99,7 @@ function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
                     if (size === columnNumber) {
                         //console.log(row);
                         cb(row);
-                        ch.push(row)
+                        //ch.push(row)
                         db[rowNumber] = null //delete the finished row
                     }
                     rowNumber++;
@@ -110,7 +110,7 @@ function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
                 finished++;
                 if (finished === columnNumber) {
                     //console.log('finished loading data from disk');
-                    cache[table] = ch
+                    //cache[table] = ch
                     cb2 && cb2()
                 }
             })
