@@ -5,6 +5,7 @@ function estimateCardinality() {
 }
 
 function optimize(select, from, where, filter, metaData) {
+    metaData = _.cloneDeep(metaData)
     let tables = {};
     let best = {};
     let cache = {};
@@ -37,7 +38,7 @@ function optimize(select, from, where, filter, metaData) {
         if (last) {
             return last
         }
-        return 999999999
+        return 9999999999
     }
 
     //Todo
@@ -127,13 +128,20 @@ function optimize(select, from, where, filter, metaData) {
         if (rels.length === 1) {
             return [metaData[rels[0]].size, rels]
         }
-        let curr = 9999999999;
+        let curr;
         let p = [];
         for (let r of rels) {
             let relNew = rels.filter((val) => val !== r);
             let [internalOrder, path] = computeBest(relNew);
-            let totalCost = internalOrder + cost(relNew, r);
-            if (totalCost < curr) {
+            if (!internalOrder) {
+                continue
+            }
+            let c = cost(relNew, r)
+            if (c === null) {
+                continue
+            }
+            let totalCost = internalOrder + c;
+            if (totalCost < curr || !curr) {
                 p = [...path];
                 curr = totalCost;
                 p.push(r)
@@ -146,7 +154,7 @@ function optimize(select, from, where, filter, metaData) {
     function cost(rel, r) {
         let join = getJoin(rel, r);
         if (join.length === 0) {
-            return 9999999
+            return null
         }
         // still problematic
         return calculateSize(rel, r, join)
@@ -192,29 +200,42 @@ function optimize(select, from, where, filter, metaData) {
         join.column2.push(column2)
     }));
     let filterByTable = {};
+    let tableP = {}
     filter.forEach((([tableName, column, operator, target]) => {
         let table = tables[tableName] || new Set();
         tables[tableName] = table;
         table.add(column);
         let filters = filterByTable[tableName] || [];
         filterByTable[tableName] = filters;
+        let p = tableP[tableName] || []
+        tableP[tableName] = p
+        let meta = metaData[tableName]
+        let gap = meta.max[column] - meta.min[column]
         switch (operator) {
             case '<':
                 filters.push([column, (value) => {
                     return value < target
                 }]);
+                p.push((target - meta.min[column]) / (gap))
                 break;
             case '=':
                 filters.push([column, (value) => {
                     return value === target
                 }]);
+                p.push(1 / meta.unique[column])
                 break;
             case '>':
                 filters.push([column, (value) => {
                     return value > target
                 }])
+                p.push((meta.max[column] - target) / (gap))
         }
     }));
+
+    for (let tableName in tableP) {
+        metaData[tableName].size = Math.min(...tableP[tableName]) * metaData[tableName].size
+    }
+
 
     function calculateTableIndex() {
         let tableIndex = {};
@@ -234,8 +255,8 @@ function optimize(select, from, where, filter, metaData) {
     }
 
     let joins = bestToJoins(computeBest(from)[1]);
-    //console.log(joins)
-    //console.log(computeBest(from)[0])
+    //console.log(cache,best)
+    //console.log(...computeBest(from))
 // store the column's position in the resulting row
     let tableIndex = calculateTableIndex();
 

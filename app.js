@@ -100,6 +100,9 @@ function build(path, tableName) {
             let wl = wlArray[index];
             let bufferIndex = bufferIndexArray[index];
             buf.writeInt32LE(item, bufferIndex);
+            minArray[index] = Math.min(minArray[index], item)
+            maxArray[index] = Math.max(maxArray[index], item)
+            uniqueArray[index].add(item)
             bufferIndex += 4;
             // can be done using ==== because we manually set it to 4 times
             if (bufferIndex === buffer_size) {
@@ -290,7 +293,7 @@ function query(input, queryNo) {
         }
     }
 
-    async function join([rel, tableName2, allJoin], joined, acc, joinNum) {
+    async function join([rel, joinTable, allJoin], joined, acc, joinNum) {
 
         async function pipe(data) {
             if (data.length === 0) {
@@ -314,14 +317,17 @@ function query(input, queryNo) {
                     for (let i = 0; i < allJoin.length; i++) {
                         let {tableName, tableName2, column, column2} = allJoin[i]
                         columns.push(accIndex[tableName][column])
+                        // if (tableName !== joinTable) {
+                        //     console.log(tableName, joinTable,tableName2)
+                        // }
                         columns2.push(tableIndex[tableName2][column2])
                     }
-                    addJoin(joined, tableName2);
+                    addJoin(joined, joinTable);
                     let db1 = _.groupBy(acc, (row) => {
                         return _(columns).map((column) => getColumn(row, column)).join(',')
                     });
                     acc = [];
-                    get(tableName2, tables[tableName2], (value, index) => {
+                    get(joinTable, tables[joinTable], (value, index) => {
                         // if found the target, we just store the relationship we need
                         let target = db1[_(columns2).map((column) => getColumn(value, column)).join(',')];
                         if (target) {
@@ -347,11 +353,11 @@ function query(input, queryNo) {
                         }// if no same drop
                     }, inMemoryDataBase, async () => {
                         resolve(pipe(acc))
-                    }, filterByTable[tableName2])
+                    }, filterByTable[joinTable])
                 }))
             } else {
-                let tableName = joins[0].tableName
-                let tableName2 = joins[0].tableName2
+                let tableName = rel[0]
+                let tableName2 = joinTable
                 return new Promise(resolve => {
                     //change column name to its actual position in a row
                     let columns = []
@@ -408,16 +414,8 @@ function query(input, queryNo) {
             }
         } else {
             let {tableName, tableName2, column, column2} = allJoin
-            if (isJoined(joined, tableName) || isJoined(joined, tableName2)) {
+            if (isJoined(joined, tableName)) {
                 return new Promise((resolve => {
-                    if (!isJoined(joined, tableName)) {
-                        let i = tableName;
-                        tableName = tableName2;
-                        tableName2 = i;
-                        i = column;
-                        column = column2;
-                        column2 = i
-                    }
                     column = accIndex[tableName][column];
                     column2 = tableIndex[tableName2][column2];
                     addJoin(joined, tableName2);
