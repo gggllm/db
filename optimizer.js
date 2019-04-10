@@ -9,15 +9,15 @@ function optimize(select, from, where, filter, metaData) {
     let best = {};
     let cache = {};
 
-    function calculateSimpleJoinSize({tableName, tableName2, columns, columns2}) {
-
+    function calculateSimpleJoinSize(joins) {
+        let tableName = joins[0].tableName
+        let tableName2 = joins[0].tableName2
         let meta1 = metaData[tableName];
         let meta2 = metaData[tableName2];
         let size1 = meta1.size;
         let size2 = meta2.size;
         let size = size1 * size2;
-        columns.forEach((column, index) => {
-            let column2 = columns2[index];
+        joins.forEach(({column, column2}) => {
             let unique1 = meta1.unique[column];
             let unique2 = meta2.unique[column2];
             size = size * Math.min(unique1, unique2) / (unique1 * unique2);
@@ -33,70 +33,67 @@ function optimize(select, from, where, filter, metaData) {
     }
 
     function getCache(rel) {
-        let last = cache[rel]
+        let last = cache[rel];
         if (last) {
             return last
         }
         return 999999999
     }
-    //Todo
-    function calculateSize(rel, joins) {
-        joins.forEach(({tableName, tableName2, columns, columns2}) => {
-            // transform to array
-            if (!columns.push) {
-                columns = [columns];
-                columns2 = [columns2]
-            }
-            if (rel.length === 1) {
-                return calculateSimpleJoinSize({tableName, tableName2, columns, columns2})
-            }
-            if (rel.indexOf(tableName) < 0) {
-                let i = tableName;
-                tableName = tableName2;
-                tableName2 = i;
-                i = columns;
-                columns = columns2;
-                columns2 = i
-            }
 
-            let resRel = [...rel, tableName2].sort().join('');
-            if (cache[resRel]) {
-                let cr = cache[resRel];
-                return cr.size
-            }
-            let last = getCache(rel.join(''));
-            // cannot reach
-            if (!last.size) {
-                return last
-            }
-            let meta = metaData[tableName2];
-            let size = last.size * meta.size;
-            columns2.forEach((column2, index) => {
-                let column = columns[index];
-                let unique = meta.unique[column];
-                let unique2 = last[tableName].unique[column];
-                size = size * Math.min(unique2, unique) / (unique2 * unique)
-            });
-        })
-        let res = {...last, size};
-        res[tableName2] = meta;
+    //Todo
+    function calculateSize(rel, addedTableName, joins) {
+        if (!joins.push) {
+            joins = [joins]
+        }
+        if (rel.length === 1) {
+            return calculateSimpleJoinSize(joins)
+        }
+        let resRel = [...rel, addedTableName].sort().join('');
+        if (cache[resRel]) {
+            let cr = cache[resRel];
+            return cr.size
+        }
+        let last = getCache(rel.join(''));
+        // cannot reach
+        if (!last.size) {
+            return last
+        }
+        let meta = metaData[addedTableName];
+        let size = last.size * meta.size;
+        // hack
+        let res = {...last}
+        res[addedTableName] = meta
+        joins.forEach(({tableName, tableName2, column, column2}) => {
+            let unique = res[tableName].unique[column];
+            let unique2 = res[tableName2].unique[column2];
+            size = size * Math.min(unique2, unique) / (unique2 * unique)
+        });
+        res.size = size;
         cache[resRel] = res;
         return size
     }
 
     // find joins using rels and r
     function getJoin(rels, r) {
-        let res = []
+        let res = [];
         for (let i = 0; i < rels.length; i++) {
-            let rel = rels[i]
-            if (joinMap[rel + ',' + r]) {
-                res.push(joinMap[rel + ',' + r])
+            let rel = rels[i];
+            let join = joinMap[rel + ',' + r];
+            if (join) {
+                join.columns.forEach((column, index) => {
+                    let column2 = join.column2[index];
+                    res.push({tableName: join.tableName, tableName2: join.tableName2, column, column2})
+                })
             }
-            if (joinMap[r + ',' + rel]) {
-                res.push(joinMap[r + ',' + rel])
+            join = joinMap[r + ',' + rel];
+            if (join) {
+                join.columns.forEach((column, index) => {
+                    let column2 = join.column2[index];
+                    res.push({tableName: join.tableName, tableName2: join.tableName2, column, column2})
+                })
             }
         }
-        return res
+        return res.length === 1 ? res[0] : res
     }
 
 //rels is an array
@@ -110,14 +107,14 @@ function optimize(select, from, where, filter, metaData) {
             return [metaData[rels[0]].size, rels]
         }
         let curr = 9999999999;
-        let p = []
+        let p = [];
         for (let r of rels) {
             let relNew = rels.filter((val) => val !== r);
             let [internalOrder, path] = computeBest(relNew);
             let totalCost = internalOrder + cost(relNew, r);
             if (totalCost < curr) {
                 p = [...path];
-                curr = totalCost
+                curr = totalCost;
                 p.push(r)
             }
         }
@@ -131,7 +128,7 @@ function optimize(select, from, where, filter, metaData) {
             return 9999999
         }
         // still problematic
-        return calculateSize(rel, join)
+        return calculateSize(rel, r, join)
     }
 
     function bestToJoins(best) {
@@ -150,14 +147,14 @@ function optimize(select, from, where, filter, metaData) {
         tables[tableName] = table;
         table.add(column)
     }));
-    let joinMap = {}
+    let joinMap = {};
     where.forEach((([tableName, column, tableName2, column2]) => {
         if (tableName > tableName2) {
-            let i = tableName2
-            tableName2 = tableName
-            tableName = i
-            i = column
-            column = column2
+            let i = tableName2;
+            tableName2 = tableName;
+            tableName = i;
+            i = column;
+            column = column2;
             column2 = i
         }
         let table = tables[tableName] || new Set();
@@ -167,11 +164,11 @@ function optimize(select, from, where, filter, metaData) {
         tables[tableName2] = table2;
         table2.add(column2);
         let join = joinMap[tableName + ',' + tableName2] || {
-            tableName, tableName2, columns: [], columns2: []
-        }
-        joinMap[tableName + ',' + tableName2] = join
-        join.columns.push(column)
-        join.columns2.push(column2)
+            tableName, tableName2, columns: [], column2: []
+        };
+        joinMap[tableName + ',' + tableName2] = join;
+        join.columns.push(column);
+        join.column2.push(column2)
     }));
     let filterByTable = {};
     filter.forEach((([tableName, column, operator, target]) => {
@@ -216,6 +213,8 @@ function optimize(select, from, where, filter, metaData) {
     }
 
     let joins = bestToJoins(computeBest(from)[1]);
+    //console.log(joins)
+    //console.log(computeBest(from)[0])
 // store the column's position in the resulting row
     let tableIndex = calculateTableIndex();
 
