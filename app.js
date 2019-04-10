@@ -8,7 +8,7 @@ const readFileByLine = require('./readFileByLine');
 const block_size = (fs.statSync('./app.js').blksize || 4096);
 const buffer_size = block_size * 4;
 // 6000000 can pass small
-const MAX_ROW = 100000;
+const MAX_ROW = 1;
 
 let builtFlag = false;
 const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
@@ -246,16 +246,11 @@ function query(input, queryNo) {
     // get the join sequence and tables that is needed for extraction
     let {joins, tables, tableIndex, filterByTable} = optimize(select, from, where, filter, metaDict);
     let accIndex = calculateAccIndex(_.flatMap(joins, 2), tables);
-    //console.log(queryNo)
-    //console.log(select, joins, tables, tableIndex, filter)
-    let result = select.map(() => {
-        return 0
-    });
+    let result = select.map(() => 0);
     select = select.map(([table, col]) => {
         return accIndex[table][col]
     });
     next(0).then(() => {// current pipeline is over
-        // all data is processed ????
         total--;
         let emptyFlag = true;
         for (let i = 0; i < result.length; i++) {
@@ -292,7 +287,7 @@ function query(input, queryNo) {
             if (data.length === 0) {
                 return
             }
-            return next(joinNum + 1, data, );
+            return next(joinNum + 1, data);
         }
 
         let lastFlag = false;
@@ -300,7 +295,7 @@ function query(input, queryNo) {
             lastFlag = true;
         }
 
-        // make sure table1 is in the acc
+        // make sure all join is an array
         if (allJoin.push) {
             if (rel.length > 1) {
                 return new Promise((resolve => {
@@ -367,9 +362,7 @@ function query(input, queryNo) {
                         db1.set(val, list)
                     }, inMemoryDataBase, () => {
                         get(tableName2, tables[tableName2], (value, index) => {
-                            // if found the target, we just store the relationship we need
                             let target = db1.get(_(columns2).map((column) => getColumn(value, column)).join(','));
-                            //console.log(value[column2],target)
                             if (target) {
                                 target.forEach(async (row1) => {
                                     let length = row1.length / 4;
@@ -398,7 +391,7 @@ function query(input, queryNo) {
             }
         } else {
             let {tableName, tableName2, column, column2} = allJoin;
-            if (rel.length>1) {
+            if (rel.length > 1) {
                 return new Promise((resolve => {
                     column = accIndex[tableName][column];
                     column2 = tableIndex[tableName2][column2];
@@ -407,32 +400,36 @@ function query(input, queryNo) {
                     });
                     acc = [];
                     get(tableName2, tables[tableName2], (value, index) => {
-                        // if found the target, we just store the relationship we need
-                        let target = db1[getColumn(value, column2)];
-                        if (target) {
-                            target.forEach(async (row1) => {
-                                let length = row1.length / 4;
+                            let target = db1[getColumn(value, column2)];
+                            if (target) {
                                 if (lastFlag) {
-                                    select.forEach((col, index) => {
-                                        if (col >= length) {
-                                            result[index] += getColumn(value, col - length)
-                                        } else {
-                                            result[index] += getColumn(row1, col)
-                                        }
+                                    target.forEach(async (row1) => {
+                                        let length = row1.length / 4;
+                                        select.forEach((col, index) => {
+                                            if (col >= length) {
+                                                result[index] += getColumn(value, col - length)
+                                            } else {
+                                                result[index] += getColumn(row1, col)
+                                            }
+                                        })
                                     })
                                 } else {
-                                    let cur = Buffer.concat([row1, value]);
-                                    acc.push(cur);
-                                    if (acc.length > MAX_ROW) {
-                                        await pipe(acc);
-                                        acc = []
-                                    }
+                                    target.forEach(async (row1) => {
+                                        let cur = Buffer.concat([row1, value]);
+                                        acc.push(cur);
+                                        if (acc.length > MAX_ROW) {
+                                            await pipe(acc);
+                                            acc = []
+                                        }
+                                    })
                                 }
-                            })
-                        }// if no same drop
-                    }, inMemoryDataBase, async () => {
-                        resolve(pipe(acc))
-                    }, filterByTable[tableName2])
+                            }// if no same drop
+                        }
+                        ,
+                        inMemoryDataBase, async () => {
+                            resolve(pipe(acc))
+                        }, filterByTable[tableName2]
+                    )
                 }))
             } else {
                 return new Promise(resolve => {
