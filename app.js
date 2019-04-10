@@ -8,7 +8,7 @@ const readFileByLine = require('./readFileByLine');
 const block_size = (fs.statSync('./app.js').blksize || 4096);
 const buffer_size = block_size * 4;
 // 6000000 can pass small
-const MAX_ROW = 3000000;
+const MAX_ROW = 100000;
 
 let builtFlag = false;
 const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
@@ -86,9 +86,9 @@ function build(path, tableName) {
         let cur = [];
         write = (item, index) => {
             cur.push(item);
-            minArray[index] = Math.min(minArray[index], item)
-            maxArray[index] = Math.max(maxArray[index], item)
-            uniqueArray[index].add(item)
+            minArray[index] = Math.min(minArray[index], item);
+            maxArray[index] = Math.max(maxArray[index], item);
+            uniqueArray[index].add(item);
             if (index === columnNumber - 1) {
                 ds.push(arrayToBuffer(cur));
                 cur = [];
@@ -100,8 +100,8 @@ function build(path, tableName) {
             let wl = wlArray[index];
             let bufferIndex = bufferIndexArray[index];
             buf.writeInt32LE(item, bufferIndex);
-            minArray[index] = Math.min(minArray[index], item)
-            maxArray[index] = Math.max(maxArray[index], item)
+            minArray[index] = Math.min(minArray[index], item);
+            maxArray[index] = Math.max(maxArray[index], item);
             //uniqueArray[index].add(item)
             bufferIndex += 4;
             // can be done using ==== because we manually set it to 4 times
@@ -170,10 +170,10 @@ function build(path, tableName) {
 
     rl.on('close', () => {
         metaData.size = lineNumber;
-        metaData.max = maxArray
-        metaData.min = minArray
+        metaData.max = maxArray;
+        metaData.min = minArray;
         // remove unique calculation to boost
-        metaData.unique = uniqueArray.map((set,index) => set.size || metaData.size)
+        metaData.unique = uniqueArray.map((set, index) => set.size || metaData.size);
         //console.log(new Date().getTime() - start)
         wlArray.length && wlArray.forEach((wl, index) => {
             wl.end(bufArray[index].slice(0, bufferIndexArray[index]), 'binary', () => {
@@ -242,14 +242,6 @@ function query(input, queryNo) {
         return accIndex
     }
 
-    function addJoin(joined, tableName) {
-        joined[tableName] = true
-    }
-
-    function isJoined(joined, tableName) {
-        return joined[tableName]
-    }
-
     let [select, from, where, filter] = parse(input);
     // get the join sequence and tables that is needed for extraction
     let {joins, tables, tableIndex, filterByTable} = optimize(select, from, where, filter, metaDict);
@@ -288,19 +280,19 @@ function query(input, queryNo) {
         }
     });
 
-    async function next(joinNum, acc, joined = {}) {
+    async function next(joinNum, acc) {
         if (joinNum < joins.length) {
-            return join(joins[joinNum], joined, acc, joinNum)
+            return join(joins[joinNum], acc, joinNum)
         }
     }
 
-    async function join([rel, joinTable, allJoin], joined, acc, joinNum) {
+    async function join([rel, joinTable, allJoin], acc, joinNum) {
 
         async function pipe(data) {
             if (data.length === 0) {
                 return
             }
-            return next(joinNum + 1, data, _.clone(joined));
+            return next(joinNum + 1, data, );
         }
 
         let lastFlag = false;
@@ -308,22 +300,17 @@ function query(input, queryNo) {
             lastFlag = true;
         }
 
-        //console.log(tableName, tableName2)
         // make sure table1 is in the acc
         if (allJoin.push) {
             if (rel.length > 1) {
                 return new Promise((resolve => {
-                    let columns = []
-                    let columns2 = []
+                    let columns = [];
+                    let columns2 = [];
                     for (let i = 0; i < allJoin.length; i++) {
-                        let {tableName, tableName2, column, column2} = allJoin[i]
-                        columns.push(accIndex[tableName][column])
-                        // if (tableName !== joinTable) {
-                        //     console.log(tableName, joinTable,tableName2)
-                        // }
+                        let {tableName, tableName2, column, column2} = allJoin[i];
+                        columns.push(accIndex[tableName][column]);
                         columns2.push(tableIndex[tableName2][column2])
                     }
-                    addJoin(joined, joinTable);
                     let db1 = _.groupBy(acc, (row) => {
                         return _(columns).map((column) => getColumn(row, column)).join(',')
                     });
@@ -357,25 +344,21 @@ function query(input, queryNo) {
                     }, filterByTable[joinTable])
                 }))
             } else {
-                let tableName = rel[0]
-                let tableName2 = joinTable
+                let tableName = rel[0];
+                let tableName2 = joinTable;
                 return new Promise(resolve => {
                     //change column name to its actual position in a row
-                    let columns = []
-                    let columns2 = []
+                    let columns = [];
+                    let columns2 = [];
                     for (let i = 0; i < allJoin.length; i++) {
-                        let {tableName, tableName2, column, column2} = allJoin[i]
-                        columns.push(tableIndex[tableName][column])
+                        let {tableName, tableName2, column, column2} = allJoin[i];
+                        columns.push(tableIndex[tableName][column]);
                         columns2.push(tableIndex[tableName2][column2])
                     }
 
 
                     let db1 = new Map();
                     acc = [];
-                    // calculate the new acc index
-                    addJoin(joined, tableName);
-                    addJoin(joined, tableName2);
-
                     get(tableName, tables[tableName], (value, index) => {
                         //console.log(value)
                         let val = _(columns).map((column) => getColumn(value, column)).join(',');
@@ -414,12 +397,11 @@ function query(input, queryNo) {
                 })
             }
         } else {
-            let {tableName, tableName2, column, column2} = allJoin
-            if (isJoined(joined, tableName)) {
+            let {tableName, tableName2, column, column2} = allJoin;
+            if (rel.length>1) {
                 return new Promise((resolve => {
                     column = accIndex[tableName][column];
                     column2 = tableIndex[tableName2][column2];
-                    addJoin(joined, tableName2);
                     let db1 = _.groupBy(acc, (row) => {
                         return getColumn(row, column)
                     });
@@ -461,12 +443,7 @@ function query(input, queryNo) {
 
                     let db1 = new Map();
                     acc = [];
-                    // calculate the new acc index
-                    addJoin(joined, tableName);
-                    addJoin(joined, tableName2);
-
                     get(tableName, tables[tableName], (value, index) => {
-                        //console.log(value)
                         let val = getColumn(value, column);
                         let list = db1.get(val) || [];
                         list.push(value);
@@ -475,7 +452,6 @@ function query(input, queryNo) {
                         get(tableName2, tables[tableName2], (value, index) => {
                             // if found the target, we just store the relationship we need
                             let target = db1.get(getColumn(value, column2));
-                            //console.log(value[column2],target)
                             if (target) {
                                 target.forEach(async (row1) => {
                                     let length = row1.length / 4;

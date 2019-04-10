@@ -233,7 +233,7 @@ function optimize(select, from, where, filter, metaData) {
     }));
 
     for (let tableName in tableP) {
-        metaData[tableName].size = Math.min(...tableP[tableName]) * metaData[tableName].size
+        metaData[tableName].size = tableP[tableName].reduce((acc, cur) => acc * cur) * metaData[tableName].size
     }
 
 
