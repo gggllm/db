@@ -453,15 +453,7 @@ function query(input, queryNo) {
                 }))
             } else {
                 return new Promise(resolve => {
-                    //make sure table 1 is smaller then table 2
-                    if (metaDict[tableName].size > metaDict[tableName2].size) {
-                        let i = tableName;
-                        tableName = tableName2;
-                        tableName2 = i;
-                        i = column;
-                        column = column2;
-                        column2 = i
-                    }
+
                     //change column name to its actual position in a row
                     column = tableIndex[tableName][column];
                     column2 = tableIndex[tableName2][column2];
