@@ -74,6 +74,7 @@ function optimize(select, from, where, filter, metaData) {
     }
 
     // find joins using rels and r
+    // we should make sure the joined table in the table2
     function getJoin(rels, r) {
         let res = [];
         for (let i = 0; i < rels.length; i++) {
@@ -82,14 +83,34 @@ function optimize(select, from, where, filter, metaData) {
             if (join) {
                 join.columns.forEach((column, index) => {
                     let column2 = join.column2[index];
-                    res.push({tableName: join.tableName, tableName2: join.tableName2, column, column2})
+                    let tableName = join.tableName
+                    let tableName2 = join.tableName2
+                    if (tableName === r) {
+                        let i = tableName;
+                        tableName = tableName2;
+                        tableName2 = i;
+                        i = column;
+                        column = column2;
+                        column2 = i
+                    }
+                    res.push({tableName, tableName2, column, column2})
                 })
             }
             join = joinMap[r + ',' + rel];
             if (join) {
                 join.columns.forEach((column, index) => {
                     let column2 = join.column2[index];
-                    res.push({tableName: join.tableName, tableName2: join.tableName2, column, column2})
+                    let tableName = join.tableName
+                    let tableName2 = join.tableName2
+                    if (tableName === r) {
+                        let i = tableName;
+                        tableName = tableName2;
+                        tableName2 = i;
+                        i = column;
+                        column = column2;
+                        column2 = i
+                    }
+                    res.push({tableName, tableName2, column, column2})
                 })
             }
         }
@@ -135,7 +156,7 @@ function optimize(select, from, where, filter, metaData) {
         let rel = [best[0]];
         let joins = [];
         while (rel.length < best.length) {
-            joins.push(getJoin(rel, best[rel.length]));
+            joins.push([[...rel], best[rel.length], getJoin(rel, best[rel.length])]);
             rel.push(best[rel.length])
         }
         return joins

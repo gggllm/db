@@ -228,11 +228,6 @@ function query(input, queryNo) {
         let accIndex = {};
         let accLength = 0;
         joins.forEach(({tableName, tableName2, column, column2}) => {
-            if (metaDict[tableName].size > metaDict[tableName2].size) {
-                let i = tableName;
-                tableName = tableName2;
-                tableName2 = i;
-            }
             if (!accIndex[tableName]) {
                 addIndex(tableName)
             }
@@ -254,7 +249,7 @@ function query(input, queryNo) {
     let [select, from, where, filter] = parse(input);
     // get the join sequence and tables that is needed for extraction
     let {joins, tables, tableIndex, filterByTable} = optimize(select, from, where, filter, metaDict);
-    let accIndex = calculateAccIndex(_.flatMap(joins), tables);
+    let accIndex = calculateAccIndex(_.flatMap(joins, 2), tables);
     //console.log(queryNo)
     //console.log(select, joins, tables, tableIndex, filter)
     let result = select.map(() => {
@@ -295,7 +290,7 @@ function query(input, queryNo) {
         }
     }
 
-    async function join(allJoin, joined, acc, joinNum) {
+    async function join([rel, tableName2, allJoin], joined, acc, joinNum) {
 
         async function pipe(data) {
             if (data.length === 0) {
@@ -312,45 +307,15 @@ function query(input, queryNo) {
         //console.log(tableName, tableName2)
         // make sure table1 is in the acc
         if (allJoin.push) {
-            //Todo
-            if (isJoined(joined, tableName) || isJoined(joined, tableName2)) {
-                // only do filter in this situation
-                if (isJoined(joined, tableName) && isJoined(joined, tableName2)) {
-                    columns = columns.map((column) => accIndex[tableName][column]);
-                    columns2 = column2.map((column => accIndex[tableName2][column]));
-                    if (lastFlag) {
-                        acc.forEach((row) => {
-                            columns.forEach((column, index) => {
-                                let column2 = columns2[index]
-                                if (getColumn(row, column) === getColumn(row, column2)) {
-                                    select.forEach((col, index) => {
-                                        result[index] += getColumn(row, col)
-                                    })
-                                }
-                            })
-                        })
-                    } else {
-                        acc = acc.filter((row) => {
-                            for (let index = 0; index < columns.length; index++) {
-                                let column = columns[index]
-                                let column2 = columns2[index]
-                                return getColumn(row, column) === getColumn(row, column2)
-                            }
-                        });
-                    }
-                    return pipe(acc);
-                }
+            if (rel.length > 1) {
                 return new Promise((resolve => {
-                    if (!isJoined(joined, tableName)) {
-                        let i = tableName;
-                        tableName = tableName2;
-                        tableName2 = i;
-                        i = columns;
-                        columns = columns2;
-                        columns2 = i
+                    let columns = []
+                    let columns2 = []
+                    for (let i = 0; i < allJoin.length; i++) {
+                        let {tableName, tableName2, column, column2} = allJoin[i]
+                        columns.push(accIndex[tableName][column])
+                        columns2.push(tableIndex[tableName2][column2])
                     }
-                    columns = columns.map((column) => accIndex[tableName][column]);
-                    columns2 = column2.map((column => tableIndex[tableName2][column]));
                     addJoin(joined, tableName2);
                     let db1 = _.groupBy(acc, (row) => {
                         return _(columns).map((column) => getColumn(row, column)).join(',')
@@ -385,19 +350,18 @@ function query(input, queryNo) {
                     }, filterByTable[tableName2])
                 }))
             } else {
+                let tableName = joins[0].tableName
+                let tableName2 = joins[0].tableName2
                 return new Promise(resolve => {
-                    //make sure table 1 is smaller then table 2
-                    if (metaDict[tableName].size > metaDict[tableName2].size) {
-                        let i = tableName;
-                        tableName = tableName2;
-                        tableName2 = i;
-                        i = columns;
-                        columns = columns2;
-                        columns2 = i
-                    }
                     //change column name to its actual position in a row
-                    columns = columns.map((column) => tableIndex[tableName][column]);
-                    columns2 = column2.map((column => tableIndex[tableName2][column]));
+                    let columns = []
+                    let columns2 = []
+                    for (let i = 0; i < allJoin.length; i++) {
+                        let {tableName, tableName2, column, column2} = allJoin[i]
+                        columns.push(tableIndex[tableName][column])
+                        columns2.push(tableIndex[tableName2][column2])
+                    }
+
 
                     let db1 = new Map();
                     acc = [];
@@ -445,25 +409,6 @@ function query(input, queryNo) {
         } else {
             let {tableName, tableName2, column, column2} = allJoin
             if (isJoined(joined, tableName) || isJoined(joined, tableName2)) {
-                // only do filter in this situation
-                if (isJoined(joined, tableName) && isJoined(joined, tableName2)) {
-                    let column = accIndex[tableName][column]
-                    let column2 = accIndex[tableName2][column2]
-                    if (lastFlag) {
-                        acc.forEach((row) => {
-                            if (getColumn(row, column) === getColumn(row, column2)) {
-                                select.forEach((col, index) => {
-                                    result[index] += getColumn(row, col)
-                                })
-                            }
-                        })
-                    } else {
-                        acc = acc.filter((row) => {
-                            return getColumn(row, column) === getColumn(row, column2)
-                        });
-                    }
-                    return pipe(acc);
-                }
                 return new Promise((resolve => {
                     if (!isJoined(joined, tableName)) {
                         let i = tableName;
