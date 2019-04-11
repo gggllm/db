@@ -280,7 +280,7 @@ function optimize(select, from, where, filter, metaData) {
     // get a table column that will removed column that will only be used in filter
     let smallTable = _.cloneDeep(tables)
     for (let table in filterByTable) {
-        let removedColumn = _(filterByTable[table]).filter(([column, filter]) => useSituation[column] === 1).groupBy(0).value;
+        let removedColumn = _(filterByTable[table]).filter(([column, filter]) => useSituation[column] === 1).groupBy(0).value();
         smallTable[table] = tables[table].filter((col) => !removedColumn[col])
     }
 
