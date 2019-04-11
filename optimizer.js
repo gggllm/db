@@ -314,15 +314,20 @@ function optimize(select, from, where, filter, metaData) {
             smallTable[table] = [...tables[table]].filter((col) => !removedColumn[table + col])
         }
         useSituation = newUseSituation
-
+        let
         joins.forEach(([rel, r, {tableName, tableName2, column, column2}]) => {
-            if (!accIndex[tableName]) {
-                addIndex(tableName)
-            }
-            if (!accIndex[tableName2]) {
-                addIndex(tableName2)
-            }
+
         });
+
+        function minusKey(key){
+            let count = useSituation[key]
+            count--
+            if (count === 0) {
+                removedColumn[key] = true
+            } else {
+                newUseSituation[key] = count
+            }
+        }
         return accIndex
     }
 
