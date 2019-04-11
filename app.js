@@ -80,7 +80,8 @@ function build(path, tableName) {
     let minArray = [];
     let maxArray = [];
     let uniqueArray = [];
-    if (fs.statSync(path).size < 50173260) {
+    //261732673
+    if (fs.statSync(path).size < 561732673) {
         let ds = [];
         inMemoryDataBase[tableName] = ds;
         let cur = [];
