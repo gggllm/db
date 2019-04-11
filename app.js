@@ -291,16 +291,21 @@ function query(input, queryNo) {
                         let target = db1[_(columns2).map((column) => getColumn(value, column)).join(',')];
                         if (target) {
                             if (lastFlag) {
-                                target.forEach(async (row1) => {
+                                let len=target.length
+                                for(let i=0;i<len;i++){
+                                    let row1=target[i]
                                     let length = row1.length / 4;
-                                    select.forEach((col, index) => {
+                                    let len2=select.length
+                                    for(let j=0;j<len2;j++){
+                                        let col=select[j]
                                         if (col >= length) {
-                                            result[index] += getColumn(value, col - length)
+                                            result[j] += getColumn(value, col - length)
                                         } else {
-                                            result[index] += getColumn(row1, col)
+                                            result[j] += getColumn(row1, col)
                                         }
-                                    })
-                                })
+                                    }
+                                }
+
                             } else {
                                 for (let i = 0; i < target.length; i++) {
                                     let row1 = target[i]
@@ -345,17 +350,20 @@ function query(input, queryNo) {
                             let target = db1.get(_(columns2).map((column) => getColumn(value, column)).join(','));
                             if (target) {
                                 if (lastFlag) {
-                                    target.forEach(async (row1) => {
+                                    let len=target.length
+                                    for(let i=0;i<len;i++){
+                                        let row1=target[i]
                                         let length = row1.length / 4;
-                                        select.forEach((col, index) => {
+                                        let len2=select.length
+                                        for(let j=0;j<len2;j++){
+                                            let col=select[j]
                                             if (col >= length) {
-                                                result[index] += getColumn(value, col - length)
+                                                result[j] += getColumn(value, col - length)
                                             } else {
-                                                result[index] += getColumn(row1, col)
+                                                result[j] += getColumn(row1, col)
                                             }
-                                        })
-
-                                    })
+                                        }
+                                    }
                                 } else {
                                     for (let i = 0; i < target.length; i++) {
                                         let row1 = target[i]
@@ -390,16 +398,20 @@ function query(input, queryNo) {
                             let target = db1[getColumn(value, column2)];
                             if (target) {
                                 if (lastFlag) {
-                                    target.forEach(async (row1) => {
+                                    let len=target.length
+                                    for(let i=0;i<len;i++){
+                                        let row1=target[i]
                                         let length = row1.length / 4;
-                                        select.forEach((col, index) => {
+                                        let len2=select.length
+                                        for(let j=0;j<len2;j++){
+                                            let col=select[j]
                                             if (col >= length) {
-                                                result[index] += getColumn(value, col - length)
+                                                result[j] += getColumn(value, col - length)
                                             } else {
-                                                result[index] += getColumn(row1, col)
+                                                result[j] += getColumn(row1, col)
                                             }
-                                        })
-                                    })
+                                        }
+                                    }
                                 } else {
                                     for (let i = 0; i < target.length; i++) {
                                         let row1 = target[i]
@@ -439,17 +451,20 @@ function query(input, queryNo) {
                             let target = db1.get(getColumn(value, column2));
                             if (target) {
                                 if (lastFlag) {
-                                    target.forEach(async (row1) => {
+                                    let len=target.length
+                                    for(let i=0;i<len;i++){
+                                        let row1=target[i]
                                         let length = row1.length / 4;
-                                        select.forEach((col, index) => {
+                                        let len2=select.length
+                                        for(let j=0;j<len2;j++){
+                                            let col=select[j]
                                             if (col >= length) {
-                                                result[index] += getColumn(value, col - length)
+                                                result[j] += getColumn(value, col - length)
                                             } else {
-                                                result[index] += getColumn(row1, col)
+                                                result[j] += getColumn(row1, col)
                                             }
-                                        })
-
-                                    })
+                                        }
+                                    }
                                 } else {
                                     for (let i = 0; i < target.length; i++) {
                                         let row1 = target[i]
