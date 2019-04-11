@@ -279,9 +279,9 @@ function optimize(select, from, where, filter, metaData) {
 
     // get a table column that will removed column that will only be used in filter
 
-    let accIndex = calculateAccIndex(_.flatMap(joins, 2), tables)
+    let accIndex = calculateAccIndex(joins, tables)
 
-    function calculateAccIndex(joins, tables,useSituation) {
+    function calculateAccIndex(joins, tables, useSituation) {
         function addIndex(tableName) {
             let tIndex = {};
             accIndex[tableName] = tIndex;
@@ -296,16 +296,16 @@ function optimize(select, from, where, filter, metaData) {
         let accLength = 0;
         let smallTable = _.cloneDeep(tables)
         for (let table in filterByTable) {
-            let filters=filterByTable[table]
-            for(let i=0;i<filters.length;i++){
-                let [column,]=filters[i]
-                let count=tables[tables][column]
+            let filters = filterByTable[table]
+            for (let i = 0; i < filters.length; i++) {
+                let [column,] = filters[i]
+                let count = user[tables][column]
 
             }
-            let removedColumn = _(filterByTable[table]).filter(([column, filter]) => useSituation[column] === 1).groupBy(0).value();
+            let removedColumn = _(filterByTable[table]).filter(([column, filter]) => useSituation[table+column] === 1).groupBy(0).value();
             smallTable[table] = tables[table].filter((col) => !removedColumn[col])
         }
-        joins.forEach(({tableName, tableName2, column, column2}) => {
+        joins.forEach(([rel, r, {tableName, tableName2, column, column2}]) => {
             if (!accIndex[tableName]) {
                 addIndex(tableName)
             }
