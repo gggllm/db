@@ -13,13 +13,16 @@ function readFromFile(table, col) {
 // cb2 is for running sequentially
 
 async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filters = []) {
-    colums=[...colums]
+    colums = [...colums]
     // analyze filter
     let removedColumn = _(filters).filter(([column, filter]) => useSituation[table + column] === 1).groupBy(0).value();
     let filterColumn = _.groupBy(filters, 0)
     let finalColumns = colums.filter((column) => !removedColumn[column]);
-    let filterColumns = colums.filter((column) => filterColumn[column]);
-    console.log(filterColumn, finalColumns, filterColumns)
+    let filterColumns = []
+    for (let key in filterColumn) {
+        filterColumns.push(key)
+    }
+    //console.log(filterColumn, finalColumns, filterColumns)
 
     if (cache[table]) {
         let db = cache[table];

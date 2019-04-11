@@ -311,7 +311,7 @@ function optimize(select, from, where, filter, metaData) {
     }
 
 
-    return {joins, tables, tableIndex, filterByTable, useSituation, accIndex};
+    return {joins, tables:smallTable, tableIndex, filterByTable, useSituation, accIndex};
 
 }
 
