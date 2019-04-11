@@ -255,7 +255,7 @@ function optimize(select, from, where, filter, metaData) {
     }
 
 
-    function calculateTableIndex() {
+    function calculateTableIndex(tables) {
         let tableIndex = {};
         for (let key in  tables) {
             let value = tables[key];
@@ -274,16 +274,16 @@ function optimize(select, from, where, filter, metaData) {
 
     let joins = bestToJoins(computeBest(from)[1]);
 // store the column's position in the resulting row
-    let tableIndex = calculateTableIndex();
 
 
     // get a table column that will removed column that will only be used in filter
     let smallTable = _.cloneDeep(tables)
     for (let table in filterByTable) {
-        let removedColumn = _(filterByTable[table]).filter(([column, filter]) => useSituation[column] === 1).groupBy(0).value();
-        smallTable[table] = tables[table].filter((col) => !removedColumn[col])
+        let removedColumn = _(filterByTable[table]).filter(([column, filter]) => useSituation[table + column] === 1).groupBy(0).value();
+        smallTable[table] = [...tables[table]].filter((col) => !removedColumn[col])
     }
 
+    let tableIndex = calculateTableIndex(smallTable);
     let accIndex = calculateAccIndex(_.flatMap(joins, 2), smallTable)
 
     function calculateAccIndex(joins, tables) {
@@ -309,6 +309,7 @@ function optimize(select, from, where, filter, metaData) {
         });
         return accIndex
     }
+
 
     return {joins, tables, tableIndex, filterByTable, useSituation, accIndex};
 

@@ -81,6 +81,7 @@ function build(path, tableName) {
     let maxArray = [];
     let uniqueArray = [];
     //261732673
+    //161732673
     if (fs.statSync(path).size < 161732673) {
         let ds = [];
         inMemoryDataBase[tableName] = ds;
@@ -441,6 +442,7 @@ function query(input, queryNo) {
                     let db1 = new Map();
                     acc = [];
                     get(tableName, tables[tableName], (value, index) => {
+                    //console.log(value.length,column,tableIndex,tableName,queryNo)
                         let val = getColumn(value, column);
                         let list = db1.get(val) || [];
                         list.push(value);
