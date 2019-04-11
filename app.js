@@ -8,7 +8,7 @@ const readFileByLine = require('./readFileByLine');
 const block_size = (fs.statSync('./app.js').blksize || 4096);
 const buffer_size = block_size * 4;
 // 6000000 can pass small
-const MAX_ROW = 1;
+const MAX_ROW = 800000;
 
 let builtFlag = false;
 const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
@@ -218,34 +218,9 @@ function addQuery(input, queryNo) {
 
 
 function query(input, queryNo) {
-    function calculateAccIndex(joins, tables) {
-        function addIndex(tableName) {
-            let tIndex = {};
-            accIndex[tableName] = tIndex;
-            let curIndex = tableIndex[tableName];
-            for (let col in curIndex) {
-                tIndex[col] = accLength + curIndex[col]
-            }
-            accLength += tables[tableName].length
-        }
-
-        let accIndex = {};
-        let accLength = 0;
-        joins.forEach(({tableName, tableName2, column, column2}) => {
-            if (!accIndex[tableName]) {
-                addIndex(tableName)
-            }
-            if (!accIndex[tableName2]) {
-                addIndex(tableName2)
-            }
-        });
-        return accIndex
-    }
-
     let [select, from, where, filter] = parse(input);
     // get the join sequence and tables that is needed for extraction
-    let {joins, tables, tableIndex, filterByTable} = optimize(select, from, where, filter, metaDict);
-    let accIndex = calculateAccIndex(_.flatMap(joins, 2), tables);
+    let {joins, tables, tableIndex, filterByTable, useSituation, accIndex} = optimize(select, from, where, filter, metaDict);
     let result = select.map(() => 0);
     select = select.map(([table, col]) => {
         return accIndex[table][col]
@@ -264,7 +239,6 @@ function query(input, queryNo) {
         }
         queryResult[queryNo] = result.join(',');
         //console.log(queryNo, result)
-        nextQuery();
         if (total === 0) {
             queryResult.forEach((value) => {
                 //console.log(value)
@@ -273,6 +247,7 @@ function query(input, queryNo) {
             });
             process.exit()
         }
+        nextQuery();
     });
 
     async function next(joinNum, acc) {
@@ -310,13 +285,13 @@ function query(input, queryNo) {
                         return _(columns).map((column) => getColumn(row, column)).join(',')
                     });
                     acc = [];
-                    get(joinTable, tables[joinTable], (value, index) => {
+                    get(joinTable, tables[joinTable], async (value, index) => {
                         // if found the target, we just store the relationship we need
                         let target = db1[_(columns2).map((column) => getColumn(value, column)).join(',')];
                         if (target) {
-                            target.forEach(async (row1) => {
-                                let length = row1.length / 4;
-                                if (lastFlag) {
+                            if (lastFlag) {
+                                target.forEach(async (row1) => {
+                                    let length = row1.length / 4;
                                     select.forEach((col, index) => {
                                         if (col >= length) {
                                             result[index] += getColumn(value, col - length)
@@ -324,19 +299,23 @@ function query(input, queryNo) {
                                             result[index] += getColumn(row1, col)
                                         }
                                     })
-                                } else {
+                                })
+                            } else {
+                                for (let i = 0; i < target.length; i++) {
+                                    let row1 = target[i]
                                     let cur = Buffer.concat([row1, value]);
                                     acc.push(cur);
                                     if (acc.length > MAX_ROW) {
-                                        await pipe(acc);
+                                        let data = acc
                                         acc = []
+                                        await pipe(data);
                                     }
                                 }
-                            })
-                        }// if no same drop
+                            }
+                        }
                     }, inMemoryDataBase, async () => {
                         resolve(pipe(acc))
-                    }, filterByTable[joinTable])
+                    }, useSituation, filterByTable[joinTable])
                 }))
             } else {
                 let tableName = rel[0];
@@ -361,12 +340,12 @@ function query(input, queryNo) {
                         list.push(value);
                         db1.set(val, list)
                     }, inMemoryDataBase, () => {
-                        get(tableName2, tables[tableName2], (value, index) => {
+                        get(tableName2, tables[tableName2], async (value, index) => {
                             let target = db1.get(_(columns2).map((column) => getColumn(value, column)).join(','));
                             if (target) {
-                                target.forEach(async (row1) => {
-                                    let length = row1.length / 4;
-                                    if (lastFlag) {
+                                if (lastFlag) {
+                                    target.forEach(async (row1) => {
+                                        let length = row1.length / 4;
                                         select.forEach((col, index) => {
                                             if (col >= length) {
                                                 result[index] += getColumn(value, col - length)
@@ -374,19 +353,26 @@ function query(input, queryNo) {
                                                 result[index] += getColumn(row1, col)
                                             }
                                         })
-                                    } else {
-                                        acc.push(Buffer.concat([row1, value]));
+
+                                    })
+                                } else {
+                                    for (let i = 0; i < target.length; i++) {
+                                        let row1 = target[i]
+                                        let cur = Buffer.concat([row1, value]);
+                                        acc.push(cur);
                                         if (acc.length > MAX_ROW) {
-                                            await pipe(acc);
+                                            let data = acc
                                             acc = []
+                                            await pipe(data);
                                         }
                                     }
-                                })
+                                }
+
                             }// if no same drop
                         }, inMemoryDataBase, async () => {
                             resolve(pipe(acc))
-                        }, filterByTable[tableName2])
-                    }, filterByTable[tableName])
+                        }, useSituation, filterByTable[tableName2])
+                    }, useSituation, filterByTable[tableName])
                 })
             }
         } else {
@@ -399,7 +385,7 @@ function query(input, queryNo) {
                         return getColumn(row, column)
                     });
                     acc = [];
-                    get(tableName2, tables[tableName2], (value, index) => {
+                    get(tableName2, tables[tableName2], async (value, index) => {
                             let target = db1[getColumn(value, column2)];
                             if (target) {
                                 if (lastFlag) {
@@ -414,22 +400,23 @@ function query(input, queryNo) {
                                         })
                                     })
                                 } else {
-                                    target.forEach(async (row1) => {
+                                    for (let i = 0; i < target.length; i++) {
+                                        let row1 = target[i]
                                         let cur = Buffer.concat([row1, value]);
                                         acc.push(cur);
                                         if (acc.length > MAX_ROW) {
-                                            await pipe(acc);
+                                            let data = acc
                                             acc = []
+                                            await pipe(data);
                                         }
-                                    })
+                                    }
                                 }
                             }// if no same drop
                         }
                         ,
                         inMemoryDataBase, async () => {
                             resolve(pipe(acc))
-                        }, filterByTable[tableName2]
-                    )
+                        }, useSituation, filterByTable[tableName2])
                 }))
             } else {
                 return new Promise(resolve => {
@@ -446,13 +433,13 @@ function query(input, queryNo) {
                         list.push(value);
                         db1.set(val, list)
                     }, inMemoryDataBase, () => {
-                        get(tableName2, tables[tableName2], (value, index) => {
+                        get(tableName2, tables[tableName2], async (value, index) => {
                             // if found the target, we just store the relationship we need
                             let target = db1.get(getColumn(value, column2));
                             if (target) {
-                                target.forEach(async (row1) => {
-                                    let length = row1.length / 4;
-                                    if (lastFlag) {
+                                if (lastFlag) {
+                                    target.forEach(async (row1) => {
+                                        let length = row1.length / 4;
                                         select.forEach((col, index) => {
                                             if (col >= length) {
                                                 result[index] += getColumn(value, col - length)
@@ -460,19 +447,25 @@ function query(input, queryNo) {
                                                 result[index] += getColumn(row1, col)
                                             }
                                         })
-                                    } else {
-                                        acc.push(Buffer.concat([row1, value]));
+
+                                    })
+                                } else {
+                                    for (let i = 0; i < target.length; i++) {
+                                        let row1 = target[i]
+                                        let cur = Buffer.concat([row1, value]);
+                                        acc.push(cur);
                                         if (acc.length > MAX_ROW) {
-                                            await pipe(acc);
+                                            let data = acc
                                             acc = []
+                                            await pipe(data);
                                         }
                                     }
-                                })
-                            }// if no same drop
+                                }
+                            }
                         }, inMemoryDataBase, async () => {
                             resolve(pipe(acc))
-                        }, filterByTable[tableName2])
-                    }, filterByTable[tableName])
+                        }, useSituation, filterByTable[tableName2])
+                    }, useSituation, filterByTable[tableName])
                 })
             }
         }

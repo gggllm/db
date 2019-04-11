@@ -1,10 +1,10 @@
 const _ = require("lodash");
 const fs = require('fs');
 
-let cache = {}
+let cache = {};
 
 function readFromFile(table, col) {
-    let path = `./test/${table}${col}.bin`
+    let path = `./test/${table}${col}.bin`;
     //console.log(fs.statSync(path).size)
     return fs.createReadStream(path)
 }
@@ -12,41 +12,47 @@ function readFromFile(table, col) {
 // cb is for streaming purpose
 // cb2 is for running sequentially
 
-function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
+async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filters = []) {
+    // analyze filter
+    let removedColumn = _(filters).filter(([column, filter]) => useSituation[column] === 1).groupBy(0).value();
+    let filterColumn = _.groupBy(filters, 0)
+    let finalColumns = colums.filter((column) => !removedColumn[column]);
+    let filterColumns = colums.filter((column) => filterColumn[column]);
+
     if (cache[table]) {
-        let db = cache[table]
-        let length = db.length
+        let db = cache[table];
+        let length = db.length;
         for (let i = 0; i < length; i++) {
-            cb(db[i], i)
+            await cb(db[i], i)
         }
         cb2 && cb2()
     } else if (inMemoryDataBase[table]) {
         //console.log(`search ${table} in memory`);
-        let db = inMemoryDataBase[table]
-        let length = db.length
-        let ch = []
+        let db = inMemoryDataBase[table];
+        let length = db.length;
+        let ch = [];
         for (let i = 0; i < length; i++) {
-            let row = db[i]
-            let flag = false
+            let row = db[i];
+            let flag = false;
             for (let i in filters) {
-                let [column, filter] = filters[i]
+                let [column, filter] = filters[i];
                 if (!filter(getColumn(row, column))) {
-                    flag = true
+                    flag = true;
                     break
                 }
             }
             if (flag) {
                 continue
             }
-            let length2 = colums.length
-            let res = Buffer.allocUnsafe(length2 * 4)
+            let length2 = finalColumns.length;
+            let res = Buffer.allocUnsafe(length2 * 4);
             for (let i = 0; i < length2; i++) {
-                res.writeInt32LE(getColumn(row, colums[i]), i * 4)
+                res.writeInt32LE(getColumn(row, finalColumns[i]), i * 4)
             }
-            cb(res, i)
+            await cb(res, i);
             ch.push(res)
         }
-        cache[table] = ch
+        cache[table] = ch;
         cb2 && cb2()
     } else {
         //console.log(`search ${table} in disk`);
@@ -54,15 +60,15 @@ function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
         let sizeArray = [];
         let finished = 0;
         let drop = [];
-        let columnNumber = colums.length;
-        let ch = []
+        let columnNumber = filterColumns.length + finalColumns.length;
+        let ch = [];
         filters = _.groupBy(filters, 0);
-        colums.forEach((col, index) => {
+        filterColumns.forEach((col, index) => {
             let rl = readFromFile(table, col);
             let rowNumber = 0;
             let colFilters = _.map(filters[col], 1);
-            let lastChunk
-            rl.on('data', (chunk) => {
+            let lastChunk;
+            rl.on('data', async (chunk) => {
                 if (lastChunk && lastChunk.length !== 0) {
                     chunk = Buffer.concat([lastChunk, chunk])
                 }
@@ -70,7 +76,6 @@ function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
                 let value;
                 while (cursor + 4 <= chunk.length) {
                     if (drop[rowNumber]) {
-                        //console.log('drop')
                         cursor += 4;
                         rowNumber++;
                         continue
@@ -85,21 +90,16 @@ function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
                         }
                     }
                     if (dropFlag) {
-                        //console.log('drop')
                         db[rowNumber] = null;// delete this row
                         drop[rowNumber] = true;
                         rowNumber++;
                         continue
                     }
-                    let row = db[rowNumber] || Buffer.allocUnsafe(columnNumber * 4);
-                    db[rowNumber] = row;
                     let size = sizeArray[rowNumber] || 0;
                     sizeArray[rowNumber] = ++size;
-                    setColumn(row, index, value);
                     if (size === columnNumber) {
-                        //console.log(row);
-                        cb(row);
-                        //ch.push(row)
+                        let row = db[rowNumber];
+                        await cb(row);
                         db[rowNumber] = null //delete the finished row
                     }
                     rowNumber++;
@@ -109,8 +109,44 @@ function get(table, colums, cb, inMemoryDataBase, cb2, filters = []) {
             rl.on('end', () => {
                 finished++;
                 if (finished === columnNumber) {
-                    //console.log('finished loading data from disk');
-                    //cache[table] = ch
+                    cb2 && cb2()
+                }
+            })
+        });
+        finalColumns.forEach((col, index) => {
+            let rl = readFromFile(table, col);
+            let rowNumber = 0;
+            let lastChunk;
+            rl.on('data', async (chunk) => {
+                if (lastChunk && lastChunk.length !== 0) {
+                    chunk = Buffer.concat([lastChunk, chunk])
+                }
+                let cursor = 0;
+                let value;
+                while (cursor + 4 <= chunk.length) {
+                    if (drop[rowNumber]) {
+                        cursor += 4;
+                        rowNumber++;
+                        continue
+                    }
+                    value = chunk.readInt32LE(cursor);
+                    cursor += 4;
+                    let row = db[rowNumber] || Buffer.allocUnsafe(finalColumns.length * 4);
+                    db[rowNumber] = row;
+                    let size = sizeArray[rowNumber] || 0;
+                    sizeArray[rowNumber] = ++size;
+                    setColumn(row, index, value);
+                    if (size === columnNumber) {
+                        await cb(row);
+                        db[rowNumber] = null //delete the finished row
+                    }
+                    rowNumber++;
+                }
+                lastChunk = chunk.slice(cursor)
+            });
+            rl.on('end', () => {
+                finished++;
+                if (finished === columnNumber) {
                     cb2 && cb2()
                 }
             })
@@ -134,7 +170,7 @@ function arrayToBuffer(array) {
 function bufferToArray(buffer) {
     let index = 0;
     let length = buffer.length;
-    let res = []
+    let res = [];
     while (index * 4 < length) {
         res.push(buffer.readInt32LE(index * 4));
         index++

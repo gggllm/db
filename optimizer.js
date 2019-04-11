@@ -5,14 +5,14 @@ function estimateCardinality() {
 }
 
 function optimize(select, from, where, filter, metaData) {
-    metaData = _.cloneDeep(metaData)
+    metaData = _.cloneDeep(metaData);
     let tables = {};
     let best = {};
     let cache = {};
 
     function calculateSimpleJoinSize(joins) {
-        let tableName = joins[0].tableName
-        let tableName2 = joins[0].tableName2
+        let tableName = joins[0].tableName;
+        let tableName2 = joins[0].tableName2;
         let meta1 = metaData[tableName];
         let meta2 = metaData[tableName2];
         let size1 = meta1.size;
@@ -62,8 +62,8 @@ function optimize(select, from, where, filter, metaData) {
         let meta = metaData[addedTableName];
         let size = last.size * meta.size;
         // hack
-        let res = {...last}
-        res[addedTableName] = meta
+        let res = {...last};
+        res[addedTableName] = meta;
         joins.forEach(({tableName, tableName2, column, column2}) => {
             let unique = res[tableName].unique[column];
             let unique2 = res[tableName2].unique[column2];
@@ -84,8 +84,8 @@ function optimize(select, from, where, filter, metaData) {
             if (join) {
                 join.columns.forEach((column, index) => {
                     let column2 = join.column2[index];
-                    let tableName = join.tableName
-                    let tableName2 = join.tableName2
+                    let tableName = join.tableName;
+                    let tableName2 = join.tableName2;
                     if (tableName === r) {
                         let i = tableName;
                         tableName = tableName2;
@@ -101,8 +101,8 @@ function optimize(select, from, where, filter, metaData) {
             if (join) {
                 join.columns.forEach((column, index) => {
                     let column2 = join.column2[index];
-                    let tableName = join.tableName
-                    let tableName2 = join.tableName2
+                    let tableName = join.tableName;
+                    let tableName2 = join.tableName2;
                     if (tableName === r) {
                         let i = tableName;
                         tableName = tableName2;
@@ -136,7 +136,7 @@ function optimize(select, from, where, filter, metaData) {
             if (!internalOrder) {
                 continue
             }
-            let c = cost(relNew, r)
+            let c = cost(relNew, r);
             if (c === null) {
                 continue
             }
@@ -170,11 +170,16 @@ function optimize(select, from, where, filter, metaData) {
         return joins
     }
 
+    let useSituation = {};
+
 
     select.forEach((([tableName, column]) => {
         let table = tables[tableName] || new Set();
         tables[tableName] = table;
-        table.add(column)
+        table.add(column);
+        let use = useSituation[tableName + column] || 0;
+        use++;
+        useSituation[tableName + column] = use
     }));
     let joinMap = {};
     where.forEach((([tableName, column, tableName2, column2]) => {
@@ -197,37 +202,50 @@ function optimize(select, from, where, filter, metaData) {
         };
         joinMap[tableName + ',' + tableName2] = join;
         join.columns.push(column);
-        join.column2.push(column2)
+        join.column2.push(column2);
+
+        let use = useSituation[tableName + column] || 0;
+        use++;
+        useSituation[tableName + column] = use;
+
+        use = useSituation[tableName2 + column2] || 0;
+        use++;
+        useSituation[tableName2 + column2] = use
     }));
     let filterByTable = {};
-    let tableP = {}
+    let tableP = {};
     filter.forEach((([tableName, column, operator, target]) => {
+
+        let use = useSituation[tableName + column] || 0;
+        use++;
+        useSituation[tableName + column] = use;
+
         let table = tables[tableName] || new Set();
         tables[tableName] = table;
         table.add(column);
         let filters = filterByTable[tableName] || [];
         filterByTable[tableName] = filters;
-        let p = tableP[tableName] || []
-        tableP[tableName] = p
-        let meta = metaData[tableName]
-        let gap = meta.max[column] - meta.min[column]
+        let p = tableP[tableName] || [];
+        tableP[tableName] = p;
+        let meta = metaData[tableName];
+        let gap = meta.max[column] - meta.min[column];
         switch (operator) {
             case '<':
                 filters.push([column, (value) => {
                     return value < target
                 }]);
-                p.push((target - meta.min[column]) / (gap))
+                p.push((target - meta.min[column]) / (gap));
                 break;
             case '=':
                 filters.push([column, (value) => {
                     return value === target
                 }]);
-                p.push(1 / meta.unique[column])
+                p.push(1 / meta.unique[column]);
                 break;
             case '>':
                 filters.push([column, (value) => {
                     return value > target
-                }])
+                }]);
                 p.push((meta.max[column] - target) / (gap))
         }
     }));
@@ -255,15 +273,44 @@ function optimize(select, from, where, filter, metaData) {
     }
 
     let joins = bestToJoins(computeBest(from)[1]);
-    //console.log(cache,best)
-    //console.log(...computeBest(from))
 // store the column's position in the resulting row
     let tableIndex = calculateTableIndex();
 
-    // _.sortBy(joins, ({tableName, tableName2, column, column2}) => {
-    //     return Math.min(tableMetaData[tableName].size, tableMetaData[tableName2].size)
-    // });
-    return {joins, tables, tableIndex, filterByTable};
+
+    // get a table column that will removed column that will only be used in filter
+    let smallTable = _.cloneDeep(tables)
+    for (let table in filterByTable) {
+        let removedColumn = _(filterByTable[table]).filter(([column, filter]) => useSituation[column] === 1).groupBy(0).value;
+        smallTable[table] = tables[table].filter((col) => !removedColumn[col])
+    }
+
+    let accIndex = calculateAccIndex(_.flatMap(joins, 2), smallTable)
+
+    function calculateAccIndex(joins, tables) {
+        function addIndex(tableName) {
+            let tIndex = {};
+            accIndex[tableName] = tIndex;
+            let curIndex = tableIndex[tableName];
+            for (let col in curIndex) {
+                tIndex[col] = accLength + curIndex[col]
+            }
+            accLength += tables[tableName].length
+        }
+
+        let accIndex = {};
+        let accLength = 0;
+        joins.forEach(({tableName, tableName2, column, column2}) => {
+            if (!accIndex[tableName]) {
+                addIndex(tableName)
+            }
+            if (!accIndex[tableName2]) {
+                addIndex(tableName2)
+            }
+        });
+        return accIndex
+    }
+
+    return {joins, tables, tableIndex, filterByTable, useSituation, accIndex};
 
 }
 
