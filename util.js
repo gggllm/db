@@ -13,6 +13,7 @@ function readFromFile(table, col) {
 // cb2 is for running sequentially
 
 async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filters = []) {
+    // analyze filter
     colums = [...colums]
     // analyze filter
     let removedColumn = _(filters).filter(([column, filter]) => useSituation[table + column] === 1).groupBy(0).value();
@@ -22,7 +23,6 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
     for (let key in filterColumn) {
         filterColumns.push(key)
     }
-    //console.log(filterColumn, finalColumns, filterColumns)
 
     if (cache[table]) {
         let db = cache[table];

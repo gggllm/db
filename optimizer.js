@@ -295,16 +295,26 @@ function optimize(select, from, where, filter, metaData) {
         let accIndex = {};
         let accLength = 0;
         let smallTable = _.cloneDeep(tables)
+        let removedColumn = {}
+        let newUseSituation = {}
         for (let table in filterByTable) {
             let filters = filterByTable[table]
             for (let i = 0; i < filters.length; i++) {
                 let [column,] = filters[i]
-                let count = user[tables][column]
+                let key = table + column
+                let count = useSituation[key]
+                count--
+                if (count === 0) {
+                    removedColumn[key] = true
+                } else {
+                    newUseSituation[key] = count
+                }
 
             }
-            let removedColumn = _(filterByTable[table]).filter(([column, filter]) => useSituation[table+column] === 1).groupBy(0).value();
-            smallTable[table] = tables[table].filter((col) => !removedColumn[col])
+            smallTable[table] = [...tables[table]].filter((col) => !removedColumn[table + col])
         }
+        useSituation = newUseSituation
+
         joins.forEach(([rel, r, {tableName, tableName2, column, column2}]) => {
             if (!accIndex[tableName]) {
                 addIndex(tableName)
