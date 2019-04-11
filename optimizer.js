@@ -302,7 +302,7 @@ function optimize(select, from, where, filter, metaData) {
                 let count=tables[tables][column]
 
             }
-            let removedColumn = _(filterByTable[table]).filter(([column, filter]) => useSituation[column] === 1).groupBy(0).value;
+            let removedColumn = _(filterByTable[table]).filter(([column, filter]) => useSituation[column] === 1).groupBy(0).value();
             smallTable[table] = tables[table].filter((col) => !removedColumn[col])
         }
         joins.forEach(({tableName, tableName2, column, column2}) => {
