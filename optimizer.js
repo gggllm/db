@@ -314,16 +314,18 @@ function optimize(select, from, where, filter, metaData) {
             smallTable[table] = [...tables[table]].filter((col) => !removedColumn[table + col])
         }
         useSituation = newUseSituation
-        let
-        joins.forEach(([rel, r, {tableName, tableName2, column, column2}]) => {
+        let sequence=[]
+        joins.forEach(([rel, r, equals]) => {
+            equals.forEach(({tableName, tableName2, column, column2})=>{
 
+            })
         });
 
         function minusKey(key){
             let count = useSituation[key]
             count--
             if (count === 0) {
-                removedColumn[key] = true
+                sequence.push(key)
             } else {
                 newUseSituation[key] = count
             }
