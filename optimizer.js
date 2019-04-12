@@ -279,7 +279,7 @@ function optimize(select, from, where, filter, metaData) {
 
     // get a table column that will removed column that will only be used in filter
 
-    let accIndex = calculateAccIndex(joins, tables)
+    let accIndex = calculateAccIndex(joins, tables);
 
     function calculateAccIndex(joins, tables, useSituation) {
         function addIndex(tableName) {
@@ -294,16 +294,16 @@ function optimize(select, from, where, filter, metaData) {
 
         let accIndex = {};
         let accLength = 0;
-        let smallTable = _.cloneDeep(tables)
-        let removedColumn = {}
-        let newUseSituation = {}
+        let smallTable = _.cloneDeep(tables);
+        let removedColumn = {};
+        let newUseSituation = {};
         for (let table in filterByTable) {
-            let filters = filterByTable[table]
+            let filters = filterByTable[table];
             for (let i = 0; i < filters.length; i++) {
-                let [column,] = filters[i]
-                let key = table + column
-                let count = useSituation[key]
-                count--
+                let [column,] = filters[i];
+                let key = table + column;
+                let count = useSituation[key];
+                count--;
                 if (count === 0) {
                     removedColumn[key] = true
                 } else {
@@ -313,23 +313,50 @@ function optimize(select, from, where, filter, metaData) {
             }
             smallTable[table] = [...tables[table]].filter((col) => !removedColumn[table + col])
         }
-        useSituation = newUseSituation
-        let sequence=[]
+        useSituation = newUseSituation;
+        let sequence = [];
+        let cutOff = [];
         joins.forEach(([rel, r, equals]) => {
-            equals.forEach(({tableName, tableName2, column, column2})=>{
-
-            })
+            let cut = 0;
+            if (!equals.push) {
+                equals = [equals]
+            }
+            equals.forEach(({tableName, tableName2, column, column2}) => {
+                cut += minusKey(tableName + column) + minusKey(tableName2 + column2)
+            });
+            cutOff.push(cut)
         });
+        let acc = _.clone(accIndex);
+        let accIndices = [_.clone(accIndex)];
+        cutOff.forEach((cut, index) => {
+            for (let tb in acc) {
+                let tab = acc[tb];
+                for (let col in tab) {
+                    let count = tab[col];
+                    count -= cut;
+                    if (count === 0) {
+                        delete acc[col]
+                    } else {
+                        acc[col] = count
+                    }
+                }
+            }
+            accIndices.push(_.cloneDeep(acc))
+        });
+        joins = joins.map(([rel, r, equals], index) => [rel, r, equals, cutOff[index], accIndices[index]])
 
-        function minusKey(key){
-            let count = useSituation[key]
-            count--
+        function minusKey(key) {
+            let count = useSituation[key];
+            count--;
             if (count === 0) {
-                sequence.push(key)
+                sequence.push(key);
+                return 1
             } else {
-                newUseSituation[key] = count
+                newUseSituation[key] = count;
+                return 0
             }
         }
+
         return accIndex
     }
 
