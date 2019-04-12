@@ -11,7 +11,7 @@ const buffer_size = block_size * 4;
 const MAX_ROW = 800000;
 
 let builtFlag = false;
-const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
+let letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
 
 if (!fs.existsSync('./test')) {
     fs.mkdirSync('./test/');
@@ -203,7 +203,6 @@ let queryNumber = 0;
 function nextQuery() {
     if (queryNumber < queryArray.length) {
         let arg = queryArray[queryNumber++];
-        //console.log(arg[1])
         // clear cache to make sure memory is clean
         clearCache();
         query(...arg)
@@ -221,8 +220,11 @@ function addQuery(input, queryNo) {
 
 function query(input, queryNo) {
     let [select, from, where, filter] = parse(input);
+    console.log(select, from, where, filter)
     // get the join sequence and tables that is needed for extraction
     let {joins, tables, tableIndex, filterByTable, useSituation, accIndex} = optimize(select, from, where, filter, metaDict);
+    console.log(joins, tables, tableIndex, filterByTable, useSituation, accIndex)
+    console.log(inMemoryDataBase)
     let result = select.map(() => 0);
     select = select.map(([table, col]) => {
         return accIndex[table][col]
@@ -292,13 +294,13 @@ function query(input, queryNo) {
                         let target = db1[_(columns2).map((column) => getColumn(value, column)).join(',')];
                         if (target) {
                             if (lastFlag) {
-                                let len=target.length
-                                for(let i=0;i<len;i++){
-                                    let row1=target[i]
+                                let len = target.length
+                                for (let i = 0; i < len; i++) {
+                                    let row1 = target[i]
                                     let length = row1.length / 4;
-                                    let len2=select.length
-                                    for(let j=0;j<len2;j++){
-                                        let col=select[j]
+                                    let len2 = select.length
+                                    for (let j = 0; j < len2; j++) {
+                                        let col = select[j]
                                         if (col >= length) {
                                             result[j] += getColumn(value, col - length)
                                         } else {
@@ -351,13 +353,13 @@ function query(input, queryNo) {
                             let target = db1.get(_(columns2).map((column) => getColumn(value, column)).join(','));
                             if (target) {
                                 if (lastFlag) {
-                                    let len=target.length
-                                    for(let i=0;i<len;i++){
-                                        let row1=target[i]
+                                    let len = target.length
+                                    for (let i = 0; i < len; i++) {
+                                        let row1 = target[i]
                                         let length = row1.length / 4;
-                                        let len2=select.length
-                                        for(let j=0;j<len2;j++){
-                                            let col=select[j]
+                                        let len2 = select.length
+                                        for (let j = 0; j < len2; j++) {
+                                            let col = select[j]
                                             if (col >= length) {
                                                 result[j] += getColumn(value, col - length)
                                             } else {
@@ -399,13 +401,13 @@ function query(input, queryNo) {
                             let target = db1[getColumn(value, column2)];
                             if (target) {
                                 if (lastFlag) {
-                                    let len=target.length
-                                    for(let i=0;i<len;i++){
-                                        let row1=target[i]
+                                    let len = target.length
+                                    for (let i = 0; i < len; i++) {
+                                        let row1 = target[i]
                                         let length = row1.length / 4;
-                                        let len2=select.length
-                                        for(let j=0;j<len2;j++){
-                                            let col=select[j]
+                                        let len2 = select.length
+                                        for (let j = 0; j < len2; j++) {
+                                            let col = select[j]
                                             if (col >= length) {
                                                 result[j] += getColumn(value, col - length)
                                             } else {
@@ -442,7 +444,7 @@ function query(input, queryNo) {
                     let db1 = new Map();
                     acc = [];
                     get(tableName, tables[tableName], (value, index) => {
-                    //console.log(value.length,column,tableIndex,tableName,queryNo)
+                        //console.log(value.length,column,tableIndex,tableName,queryNo)
                         let val = getColumn(value, column);
                         let list = db1.get(val) || [];
                         list.push(value);
@@ -453,13 +455,13 @@ function query(input, queryNo) {
                             let target = db1.get(getColumn(value, column2));
                             if (target) {
                                 if (lastFlag) {
-                                    let len=target.length
-                                    for(let i=0;i<len;i++){
-                                        let row1=target[i]
+                                    let len = target.length
+                                    for (let i = 0; i < len; i++) {
+                                        let row1 = target[i]
                                         let length = row1.length / 4;
-                                        let len2=select.length
-                                        for(let j=0;j<len2;j++){
-                                            let col=select[j]
+                                        let len2 = select.length
+                                        for (let j = 0; j < len2; j++) {
+                                            let col = select[j]
                                             if (col >= length) {
                                                 result[j] += getColumn(value, col - length)
                                             } else {
