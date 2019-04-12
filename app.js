@@ -38,7 +38,8 @@ function buildAll(line) {
     let lines = line.split(',');
     buildCountTotal = lines.length;
     lines.forEach((path, index) => {
-        build(path, letter[index])
+        let tableName = path.charAt(path.indexOf('.csv') - 1)
+        build(path, tableName)
     })
 }
 
@@ -224,9 +225,6 @@ function query(input, queryNo) {
     // get the join sequence and tables that is needed for extraction
     let {joins, tables, tableIndex, filterByTable, useSituation, accIndex} = optimize(select, from, where, filter, metaDict);
     //console.log(joins, tables, tableIndex, filterByTable, useSituation, accIndex)
-    for (let tb in inMemoryDataBase) {
-        console.log(inMemoryDataBase[tb].length)
-    }
     let result = select.map(() => 0);
     select = select.map(([table, col]) => {
         return accIndex[table][col]
