@@ -326,6 +326,13 @@ function optimize(select, from, where, filter, metaData) {
             });
             cutOff.push(cut)
         });
+        accIndex = {}
+        sequence.forEach((col, index) => {
+            [tableName, column] = col.split('')
+            let tb = accIndex[tableName] || {}
+            tb[column] = index
+            accIndex[tableName] = tb
+        })
         let acc = _.clone(accIndex);
         let accIndices = [_.clone(accIndex)];
         cutOff.forEach((cut, index) => {
@@ -360,7 +367,7 @@ function optimize(select, from, where, filter, metaData) {
         return accIndex
     }
 
-    return {joins, tables, tableIndex, filterByTable, useSituation, accIndex};
+    return {joins, tables, tableIndex, filterByTable, useSituation};
 
 }
 

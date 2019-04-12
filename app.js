@@ -260,7 +260,7 @@ function query(input, queryNo) {
         }
     }
 
-    async function join([rel, joinTable, allJoin], acc, joinNum) {
+    async function join([rel, joinTable, allJoin,cutoff,accIndex], acc, joinNum) {
 
         async function pipe(data) {
             if (data.length === 0) {
