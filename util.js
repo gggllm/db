@@ -24,18 +24,19 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
         filterColumns.push(key)
     }
 
-    if (cache[table]) {
-        let db = cache[table];
-        let length = db.length;
-        for (let i = 0; i < length; i++) {
-            await cb(db[i], i)
-        }
-        cb2 && cb2()
-    } else if (inMemoryDataBase[table]) {
+    // if (cache[table]) {
+    //     let db = cache[table];
+    //     let length = db.length;
+    //     for (let i = 0; i < length; i++) {
+    //         await cb(db[i], i)
+    //     }
+    //     cb2 && cb2()
+    // } else
+        if (inMemoryDataBase[table]) {
         //console.log(`search ${table} in memory`);
         let db = inMemoryDataBase[table];
         let length = db.length;
-        let ch = [];
+        //let ch = [];
         for (let i = 0; i < length; i++) {
             let row = db[i];
             let flag = false;
@@ -55,9 +56,9 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
                 res.writeInt32LE(getColumn(row, finalColumns[i]), i * 4)
             }
             await cb(res, i);
-            ch.push(res)
+            //ch.push(res)
         }
-        cache[table] = ch;
+        //cache[table] = ch;
         cb2 && cb2()
     } else {
         //console.log(`search ${table} in disk`);

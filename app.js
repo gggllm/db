@@ -10,7 +10,7 @@ const buffer_size = block_size * 4;
 // 6000000 can pass small
 // still need to pause the stream for fs await to work
 
-const MAX_ROW = 1200000;
+const MAX_ROW = 2400000;
 
 let builtFlag = false;
 const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
@@ -247,7 +247,7 @@ function query(input, queryNo) {
             });
             process.exit()
         }
-        nextQuery();
+    nextQuery();
     });
 
     async function next(joinNum, acc) {
