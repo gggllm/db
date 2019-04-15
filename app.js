@@ -38,7 +38,7 @@ function buildAll(line) {
     let lines = line.split(',');
     buildCountTotal = lines.length;
     lines.forEach((path, index) => {
-        build(path, letter[index])
+        build(path, path.charAt(path.indexOf('.csv') - 1))
     })
 }
 
@@ -295,7 +295,7 @@ function query(input, queryNo) {
                                     for (let j = 0; j < len2; j++) {
                                         let col = select[j];
                                         if (col >= length) {
-                                            result[j] += getColumn(value, col - length+cutright)
+                                            result[j] += getColumn(value, col - length + cutright)
                                         } else {
                                             result[j] += getColumn(row1, col)
                                         }
@@ -353,7 +353,7 @@ function query(input, queryNo) {
                                         for (let j = 0; j < len2; j++) {
                                             let col = select[j];
                                             if (col >= length) {
-                                                result[j] += getColumn(value, col - length+cutright)
+                                                result[j] += getColumn(value, col - length + cutright)
                                             } else {
                                                 result[j] += getColumn(row1, col)
                                             }
@@ -402,7 +402,7 @@ function query(input, queryNo) {
                                         for (let j = 0; j < len2; j++) {
                                             let col = select[j];
                                             if (col >= length) {
-                                                result[j] += getColumn(value, col - length+cutright)
+                                                result[j] += getColumn(value, col - length + cutright)
                                             } else {
                                                 result[j] += getColumn(row1, col)
                                             }
@@ -455,7 +455,7 @@ function query(input, queryNo) {
                                         for (let j = 0; j < len2; j++) {
                                             let col = select[j];
                                             if (col >= length) {
-                                                result[j] += getColumn(value, col - length+cutright)
+                                                result[j] += getColumn(value, col - length + cutright)
                                             } else {
                                                 result[j] += getColumn(row1, col)
                                             }
