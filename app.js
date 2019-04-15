@@ -8,7 +8,9 @@ const readFileByLine = require('./readFileByLine');
 const block_size = (fs.statSync('./app.js').blksize || 4096);
 const buffer_size = block_size * 4;
 // 6000000 can pass small
-const MAX_ROW = 2400000;
+// still need to pause the stream for fs await to work
+
+const MAX_ROW = 1200000;
 
 let builtFlag = false;
 const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
@@ -306,7 +308,9 @@ function query(input, queryNo) {
                             } else {
                                 for (let i = 0; i < target.length; i++) {
                                     let row1 = target[i];
-                                    let cur = Buffer.concat([row1.slice(cutleft * 4), value.slice(cutright * 4)]);
+                                    let cur = Buffer.allocUnsafe(row1.length + value.length - cutright * 4);
+                                    row1.copy(cur);
+                                    value.copy(cur, row1.length,cutright * 4);
                                     acc.push(cur);
                                     if (acc.length > MAX_ROW) {
                                         let data = acc;
@@ -363,11 +367,14 @@ function query(input, queryNo) {
                                 } else {
                                     for (let i = 0; i < target.length; i++) {
                                         let row1 = target[i];
-                                        let cur = Buffer.concat([row1.slice(cutleft * 4), value.slice(cutright * 4)]);
+                                        let cur = Buffer.allocUnsafe(row1.length + value.length - cutright * 4 - cutleft * 4);
+                                        row1.copy(cur,0, cutleft * 4);
+                                        value.copy(cur,row1.length-cutleft*4, cutright * 4);
                                         acc.push(cur);
                                         if (acc.length > MAX_ROW) {
-                                            let data = acc1
+                                            let data = acc1;
                                             acc = [];
+
                                             await pipe(data);
                                         }
                                     }
@@ -412,7 +419,9 @@ function query(input, queryNo) {
                                 } else {
                                     for (let i = 0; i < target.length; i++) {
                                         let row1 = target[i];
-                                        let cur = Buffer.concat([row1.slice(cutleft * 4), value.slice(cutright * 4)]);
+                                        let cur = Buffer.allocUnsafe(row1.length + value.length - cutright * 4);
+                                        row1.copy(cur);
+                                        value.copy(cur, row1.length,cutright * 4);
                                         acc.push(cur);
                                         if (acc.length > MAX_ROW) {
                                             let data = acc;
@@ -465,7 +474,9 @@ function query(input, queryNo) {
                                 } else {
                                     for (let i = 0; i < target.length; i++) {
                                         let row1 = target[i];
-                                        let cur = Buffer.concat([row1.slice(cutleft * 4), value.slice(cutright * 4)]);
+                                        let cur = Buffer.allocUnsafe(row1.length + value.length - cutright * 4 - cutleft * 4);
+                                        row1.copy(cur,0, cutleft * 4);
+                                        value.copy(cur,row1.length-cutleft*4, cutright * 4);
                                         acc.push(cur);
                                         if (acc.length > MAX_ROW) {
                                             let data = acc;

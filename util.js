@@ -142,7 +142,7 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
                         sizeArray[rowNumber] = ++size;
                         setColumn(row, index, value);
                         if (size === columnNumber) {
-                            await cb(row);
+                            await cb(row, rowNumber);
                             db[rowNumber] = null //delete the finished row
                         }
                         rowNumber++;
