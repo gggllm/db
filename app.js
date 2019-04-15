@@ -177,7 +177,7 @@ function build(path, tableName) {
         metaData.max = maxArray;
         metaData.min = minArray;
         // remove unique calculation to boost
-        metaData.unique = uniqueArray.map((set, index) => set.size || metaData.size);
+        metaData.unique = uniqueArray.map((set, index) => set.size || (maxArray[index] - minArray[index]));
         wlArray.length && wlArray.forEach((wl, index) => {
             wl.end(bufArray[index].slice(0, bufferIndexArray[index]), 'binary', () => {
                 columnFinishCount++;
@@ -247,7 +247,7 @@ function query(input, queryNo) {
             });
             process.exit()
         }
-    nextQuery();
+        nextQuery();
     });
 
     async function next(joinNum, acc) {
@@ -481,7 +481,7 @@ function query(input, queryNo) {
                                         let left = cutleft * 4;
                                         let right = cutright * 4;
                                         let len1 = row1.length - left;
-                                        let cur = Buffer.allocUnsafe(len1+ value.length - right);
+                                        let cur = Buffer.allocUnsafe(len1 + value.length - right);
                                         row1.copy(cur, 0, left);
                                         value.copy(cur, len1, right);
                                         acc.push(cur);
