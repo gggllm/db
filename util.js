@@ -32,7 +32,7 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
     //     }
     //     cb2 && cb2()
     // } else
-        if (inMemoryDataBase[table]) {
+    if (inMemoryDataBase[table]) {
         //console.log(`search ${table} in memory`);
         let db = inMemoryDataBase[table];
         let length = db.length;
@@ -65,10 +65,8 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
         let db = [];
         let sizeArray = [];
         let finished = 0;
-        let filterFinished = 0;
         let drop = [];
-        let columnNumber = finalColumns.length;
-        let filterNumber = filterColumns.length;
+        let columnNumber = finalColumns.length + filterColumns.length;
         let ch = [];
         filters = _.groupBy(filters, 0);
         filterColumns.forEach((col, index) => {
@@ -76,7 +74,7 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
             let rowNumber = 0;
             let colFilters = _.map(filters[col], 1);
             let lastChunk;
-            rl.on('data', (chunk) => {
+            rl.on('data', async (chunk) => {
                 if (lastChunk && lastChunk.length !== 0) {
                     chunk = Buffer.concat([lastChunk, chunk])
                 }
@@ -102,21 +100,26 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
                         rowNumber++;
                         continue
                     }
+                    let size = sizeArray[rowNumber] || 0;
+                    sizeArray[rowNumber] = ++size;
+                    if (size === columnNumber) {
+                        let row = db[rowNumber]
+                        await cb(row, rowNumber);
+                        db[rowNumber] = null //delete the finished row
+                    }
                     rowNumber++;
                 }
                 lastChunk = chunk.slice(cursor)
             });
             rl.on('end', async () => {
-                filterFinished++;
-                if (filterFinished === filterNumber) {
-                    getData()
-
+                finished++;
+                if (finished === columnNumber) {
+                    cb2 && cb2()
                 }
             })
         });
-        if (filterColumns.length === 0) {
-            getData()
-        }
+        getData();
+        let bufferSize = finalColumns.length * 4;
 
         function getData() {
             finalColumns.forEach((col, index) => {
@@ -137,7 +140,7 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
                         }
                         value = chunk.readInt32LE(cursor);
                         cursor += 4;
-                        let row = db[rowNumber] || Buffer.allocUnsafe(columnNumber * 4);
+                        let row = db[rowNumber] || Buffer.allocUnsafe(bufferSize);
                         db[rowNumber] = row;
                         let size = sizeArray[rowNumber] || 0;
                         sizeArray[rowNumber] = ++size;
