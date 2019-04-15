@@ -65,8 +65,10 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
         let db = [];
         let sizeArray = [];
         let finished = 0;
+        let filterFinished = 0
         let drop = [];
-        let columnNumber = finalColumns.length + filterColumns.length;
+        let columnNumber = finalColumns.length;
+        let filterCount = filterColumns.length;
         let ch = [];
         filters = _.groupBy(filters, 0);
         filterColumns.forEach((col, index) => {
@@ -100,25 +102,27 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
                         rowNumber++;
                         continue
                     }
-                    let size = sizeArray[rowNumber] || 0;
-                    sizeArray[rowNumber] = ++size;
-                    if (size === columnNumber) {
-                        let row = db[rowNumber]
-                        await cb(row, rowNumber);
-                        db[rowNumber] = null //delete the finished row
-                    }
+                    // let size = sizeArray[rowNumber] || 0;
+                    // sizeArray[rowNumber] = ++size;
+                    // if (size === columnNumber) {
+                    //     let row = db[rowNumber]
+                    //     await cb(row, rowNumber);
+                    //     db[rowNumber] = null //delete the finished row
+                    // }
                     rowNumber++;
                 }
                 lastChunk = chunk.slice(cursor)
             });
             rl.on('end', async () => {
-                finished++;
-                if (finished === columnNumber) {
-                    cb2 && cb2()
+                filterFinished++;
+                if (filterFinished === filterCount) {
+                    await getData();
                 }
             })
         });
-        getData();
+        if (filterColumns.length === 0) {
+            await getData()
+        }
         let bufferSize = finalColumns.length * 4;
 
         function getData() {
