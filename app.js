@@ -11,7 +11,7 @@ const buffer_size = block_size * 4;
 const MAX_ROW = 400000;
 
 let builtFlag = false;
-let letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
+const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
 
 if (!fs.existsSync('./test')) {
     fs.mkdirSync('./test/');
@@ -38,8 +38,7 @@ function buildAll(line) {
     let lines = line.split(',');
     buildCountTotal = lines.length;
     lines.forEach((path, index) => {
-        let tableName = path.charAt(path.indexOf('.csv') - 1)
-        build(path, tableName)
+        build(path, letter[index])
     })
 }
 
@@ -82,8 +81,7 @@ function build(path, tableName) {
     let maxArray = [];
     let uniqueArray = [];
     //261732673
-    //161732673
-    if (fs.statSync(path).size < 161732673) {
+    if (fs.statSync(path).size < 561732673) {
         let ds = [];
         inMemoryDataBase[tableName] = ds;
         let cur = [];
@@ -177,14 +175,12 @@ function build(path, tableName) {
         metaData.min = minArray;
         // remove unique calculation to boost
         metaData.unique = uniqueArray.map((set, index) => set.size || metaData.size);
-        //console.log(new Date().getTime() - start)
         wlArray.length && wlArray.forEach((wl, index) => {
             wl.end(bufArray[index].slice(0, bufferIndexArray[index]), 'binary', () => {
                 columnFinishCount++;
                 if (columnFinishCount === columnNumber) {
                     buildCount++;
                     if (buildCount === buildCountTotal) {
-                        //console.log(new Date().getTime() - start)
                         builtFlag = true;
                         // query(`SELECT SUM(A.c40), SUM(E.c4), SUM(D.c1)
                         //        FROM A, C, D, E
@@ -221,13 +217,12 @@ function addQuery(input, queryNo) {
 
 function query(input, queryNo) {
     let [select, from, where, filter] = parse(input);
-    //console.log(select, from, where, filter)
     // get the join sequence and tables that is needed for extraction
     let {joins, tables, tableIndex, filterByTable, useSituation, accIndex} = optimize(select, from, where, filter, metaDict);
-    //console.log(joins, tables, tableIndex, filterByTable, useSituation, accIndex)
     let result = select.map(() => 0);
+    //console.log(select, accIndex)
     select = select.map(([table, col]) => {
-        return accIndex[table][col]
+        return accIndex[table][col + '']
     });
     next(0).then(() => {// current pipeline is over
         total--;
@@ -245,8 +240,6 @@ function query(input, queryNo) {
         //console.log(queryNo, result)
         if (total === 0) {
             queryResult.forEach((value) => {
-                //console.log(value)
-                //console.log(acc.length)
                 process.stdout.write(value + '\n')
             });
             process.exit()
@@ -260,8 +253,8 @@ function query(input, queryNo) {
         }
     }
 
-    async function join([rel, joinTable, allJoin,cutoff,accIndex], acc, joinNum) {
-
+    async function join([rel, joinTable, allJoin, cutleft, cutright, accIndex], acc, joinNum) {
+        //console.log(cutleft,cutright)
         async function pipe(data) {
             if (data.length === 0) {
                 return
@@ -294,15 +287,15 @@ function query(input, queryNo) {
                         let target = db1[_(columns2).map((column) => getColumn(value, column)).join(',')];
                         if (target) {
                             if (lastFlag) {
-                                let len = target.length
+                                let len = target.length;
                                 for (let i = 0; i < len; i++) {
-                                    let row1 = target[i]
+                                    let row1 = target[i];
                                     let length = row1.length / 4;
-                                    let len2 = select.length
+                                    let len2 = select.length;
                                     for (let j = 0; j < len2; j++) {
-                                        let col = select[j]
+                                        let col = select[j];
                                         if (col >= length) {
-                                            result[j] += getColumn(value, col - length)
+                                            result[j] += getColumn(value, col - length+cutright)
                                         } else {
                                             result[j] += getColumn(row1, col)
                                         }
@@ -311,12 +304,12 @@ function query(input, queryNo) {
 
                             } else {
                                 for (let i = 0; i < target.length; i++) {
-                                    let row1 = target[i]
-                                    let cur = Buffer.concat([row1, value]);
+                                    let row1 = target[i];
+                                    let cur = Buffer.concat([row1.slice(cutleft * 4), value.slice(cutright * 4)]);
                                     acc.push(cur);
                                     if (acc.length > MAX_ROW) {
-                                        let data = acc
-                                        acc = []
+                                        let data = acc;
+                                        acc = [];
                                         await pipe(data);
                                     }
                                 }
@@ -343,7 +336,6 @@ function query(input, queryNo) {
                     let db1 = new Map();
                     acc = [];
                     get(tableName, tables[tableName], (value, index) => {
-                        //console.log(value)
                         let val = _(columns).map((column) => getColumn(value, column)).join(',');
                         let list = db1.get(val) || [];
                         list.push(value);
@@ -353,15 +345,15 @@ function query(input, queryNo) {
                             let target = db1.get(_(columns2).map((column) => getColumn(value, column)).join(','));
                             if (target) {
                                 if (lastFlag) {
-                                    let len = target.length
+                                    let len = target.length;
                                     for (let i = 0; i < len; i++) {
-                                        let row1 = target[i]
+                                        let row1 = target[i];
                                         let length = row1.length / 4;
-                                        let len2 = select.length
+                                        let len2 = select.length;
                                         for (let j = 0; j < len2; j++) {
-                                            let col = select[j]
+                                            let col = select[j];
                                             if (col >= length) {
-                                                result[j] += getColumn(value, col - length)
+                                                result[j] += getColumn(value, col - length+cutright)
                                             } else {
                                                 result[j] += getColumn(row1, col)
                                             }
@@ -369,12 +361,12 @@ function query(input, queryNo) {
                                     }
                                 } else {
                                     for (let i = 0; i < target.length; i++) {
-                                        let row1 = target[i]
-                                        let cur = Buffer.concat([row1, value]);
+                                        let row1 = target[i];
+                                        let cur = Buffer.concat([row1.slice(cutleft * 4), value.slice(cutright * 4)]);
                                         acc.push(cur);
                                         if (acc.length > MAX_ROW) {
-                                            let data = acc
-                                            acc = []
+                                            let data = acc;
+                                            acc = [];
                                             await pipe(data);
                                         }
                                     }
@@ -391,6 +383,7 @@ function query(input, queryNo) {
             let {tableName, tableName2, column, column2} = allJoin;
             if (rel.length > 1) {
                 return new Promise((resolve => {
+                    //console.log(accIndex,tableName,column,acc[0].length)
                     column = accIndex[tableName][column];
                     column2 = tableIndex[tableName2][column2];
                     let db1 = _.groupBy(acc, (row) => {
@@ -401,15 +394,15 @@ function query(input, queryNo) {
                             let target = db1[getColumn(value, column2)];
                             if (target) {
                                 if (lastFlag) {
-                                    let len = target.length
+                                    let len = target.length;
                                     for (let i = 0; i < len; i++) {
-                                        let row1 = target[i]
+                                        let row1 = target[i];
                                         let length = row1.length / 4;
-                                        let len2 = select.length
+                                        let len2 = select.length;
                                         for (let j = 0; j < len2; j++) {
-                                            let col = select[j]
+                                            let col = select[j];
                                             if (col >= length) {
-                                                result[j] += getColumn(value, col - length)
+                                                result[j] += getColumn(value, col - length+cutright)
                                             } else {
                                                 result[j] += getColumn(row1, col)
                                             }
@@ -417,12 +410,12 @@ function query(input, queryNo) {
                                     }
                                 } else {
                                     for (let i = 0; i < target.length; i++) {
-                                        let row1 = target[i]
-                                        let cur = Buffer.concat([row1, value]);
+                                        let row1 = target[i];
+                                        let cur = Buffer.concat([row1.slice(cutleft * 4), value.slice(cutright * 4)]);
                                         acc.push(cur);
                                         if (acc.length > MAX_ROW) {
-                                            let data = acc
-                                            acc = []
+                                            let data = acc;
+                                            acc = [];
                                             await pipe(data);
                                         }
                                     }
@@ -444,7 +437,6 @@ function query(input, queryNo) {
                     let db1 = new Map();
                     acc = [];
                     get(tableName, tables[tableName], (value, index) => {
-                        //console.log(value.length,column,tableIndex,tableName,queryNo)
                         let val = getColumn(value, column);
                         let list = db1.get(val) || [];
                         list.push(value);
@@ -455,15 +447,15 @@ function query(input, queryNo) {
                             let target = db1.get(getColumn(value, column2));
                             if (target) {
                                 if (lastFlag) {
-                                    let len = target.length
+                                    let len = target.length;
                                     for (let i = 0; i < len; i++) {
-                                        let row1 = target[i]
+                                        let row1 = target[i];
                                         let length = row1.length / 4;
-                                        let len2 = select.length
+                                        let len2 = select.length;
                                         for (let j = 0; j < len2; j++) {
-                                            let col = select[j]
+                                            let col = select[j];
                                             if (col >= length) {
-                                                result[j] += getColumn(value, col - length)
+                                                result[j] += getColumn(value, col - length+cutright)
                                             } else {
                                                 result[j] += getColumn(row1, col)
                                             }
@@ -471,12 +463,12 @@ function query(input, queryNo) {
                                     }
                                 } else {
                                     for (let i = 0; i < target.length; i++) {
-                                        let row1 = target[i]
-                                        let cur = Buffer.concat([row1, value]);
+                                        let row1 = target[i];
+                                        let cur = Buffer.concat([row1.slice(cutleft * 4), value.slice(cutright * 4)]);
                                         acc.push(cur);
                                         if (acc.length > MAX_ROW) {
-                                            let data = acc
-                                            acc = []
+                                            let data = acc;
+                                            acc = [];
                                             await pipe(data);
                                         }
                                     }

@@ -255,14 +255,14 @@ function optimize(select, from, where, filter, metaData) {
     }
 
 
-    function calculateTableIndex() {
+    function calculateTableIndex(tables) {
         let tableIndex = {};
         for (let key in  tables) {
             let value = tables[key];
             let curIndex = {};
             tableIndex[key] = curIndex;
-            let array = [...value];
             // change set to array
+            let array = [...value];
             tables[key] = array;
             array.sort((a, b) => a > b);
             array.forEach((value, index) => {
@@ -274,29 +274,25 @@ function optimize(select, from, where, filter, metaData) {
 
     let joins = bestToJoins(computeBest(from)[1]);
 // store the column's position in the resulting row
-    let tableIndex = calculateTableIndex();
 
 
     // get a table column that will removed column that will only be used in filter
 
-    let accIndex = calculateAccIndex(joins, tables);
+    let tableWithoutFilter = {};
+    for (let tableName in tables) {
+        tableWithoutFilter[tableName] = [...tables[tableName]]
+    }
+    let accIndices = [];
+    let accIndex = calculateAccIndex();
+    let tableIndex = calculateTableIndex(tableWithoutFilter);
 
-    function calculateAccIndex(joins, tables, useSituation) {
-        function addIndex(tableName) {
-            let tIndex = {};
-            accIndex[tableName] = tIndex;
-            let curIndex = tableIndex[tableName];
-            for (let col in curIndex) {
-                tIndex[col] = accLength + curIndex[col]
-            }
-            accLength += tables[tableName].length
-        }
+
+    function calculateAccIndex() {
 
         let accIndex = {};
         let accLength = 0;
-        let smallTable = _.cloneDeep(tables);
         let removedColumn = {};
-        let newUseSituation = {};
+        let newUseSituation = _.clone(useSituation);
         for (let table in filterByTable) {
             let filters = filterByTable[table];
             for (let i = 0; i < filters.length; i++) {
@@ -305,58 +301,79 @@ function optimize(select, from, where, filter, metaData) {
                 let count = useSituation[key];
                 count--;
                 if (count === 0) {
-                    removedColumn[key] = true
+                    removedColumn[key] = true;
+                    newUseSituation[key] = null
                 } else {
                     newUseSituation[key] = count
                 }
 
             }
-            smallTable[table] = [...tables[table]].filter((col) => !removedColumn[table + col])
+            tableWithoutFilter[table] = [...tables[table]].filter((col) => !removedColumn[table + col])
         }
-        useSituation = newUseSituation;
-        let sequence = [];
-        let cutOff = [];
+
+        // use situation is for util to calculate use situation before cutting off
+        // newUsesituation is for calculating cut sequence
+        useSituation = _.cloneDeep(newUseSituation);
+        let sequence = new Set();
+        let cutLeft = [];
+        let cutRight = [];
+        let newTables = {};
+        let newTablesCutRange = {};
+        accIndex = {};
+        accLength = 0
+
+        function addIndex(tableName) {
+            let index = {}
+            accIndex[tableName] = index
+            let table = tableWithoutFilter[tableName]
+            for (let idx in table) {
+                let col = table[idx]
+                if (!sequence.has(tableName + col)) {
+                    index[col] = accLength++
+                }
+            }
+        }
+
         joins.forEach(([rel, r, equals]) => {
             let cut = 0;
+            let cutTable = 0;
             if (!equals.push) {
                 equals = [equals]
             }
             equals.forEach(({tableName, tableName2, column, column2}) => {
-                cut += minusKey(tableName + column) + minusKey(tableName2 + column2)
+                if (rel.length === 1) {
+                    cut += minusKey(tableName + column);
+                }
+                cutTable += minusKey(tableName2 + column2)
             });
-            cutOff.push(cut)
-        });
-        accIndex = {}
-        sequence.forEach((col, index) => {
-            [tableName, column] = col.split('')
-            let tb = accIndex[tableName] || {}
-            tb[column] = index
-            accIndex[tableName] = tb
-        })
-        let acc = _.clone(accIndex);
-        let accIndices = [_.clone(accIndex)];
-        cutOff.forEach((cut, index) => {
-            for (let tb in acc) {
-                let tab = acc[tb];
-                for (let col in tab) {
-                    let count = tab[col];
-                    count -= cut;
-                    if (count === 0) {
-                        delete acc[col]
-                    } else {
-                        acc[col] = count
-                    }
+            if (rel.length === 1) {
+                if (!accIndex[rel[0]]) {
+                    addIndex(rel[0])
                 }
             }
-            accIndices.push(_.cloneDeep(acc))
+            if (!accIndex[r]) {
+                addIndex(r)
+            }
+            cutLeft.push(cut);
+            cutRight.push(cutTable)
         });
-        joins = joins.map(([rel, r, equals], index) => [rel, r, equals, cutOff[index], accIndices[index]])
+        //console.log(cutLeft, cutRight)
+        joins = joins.map(([rel, r, equals], index) =>
+            [rel, r, equals, cutLeft[index], cutRight[index], accIndex]);
 
         function minusKey(key) {
-            let count = useSituation[key];
+            let count = newUseSituation[key];
             count--;
             if (count === 0) {
-                sequence.push(key);
+                sequence.add(key);
+                // if a column in the table is going to be cutted, it need to be put in front of other column for
+                // easy cutting
+                let [tableName, column] = key.split('');
+                let tableArray = tableWithoutFilter[tableName];
+                let range = newTablesCutRange[tableName] || 0;
+                newTablesCutRange[tableName] = range + 1;
+                //swap the removed column to the front of the array
+                swap(tableArray, range, tableArray.indexOf(parseInt(column)))
                 return 1
             } else {
                 newUseSituation[key] = count;
@@ -367,9 +384,23 @@ function optimize(select, from, where, filter, metaData) {
         return accIndex
     }
 
-    return {joins, tables, tableIndex, filterByTable, useSituation};
+    // console.log(accIndices)
+    //console.log(joins);
+    return {
+        joins,
+        tables: tableWithoutFilter,
+        tableIndex,
+        filterByTable,
+        useSituation,
+        accIndex: accIndex
+    };
 
 }
 
+function swap(array, a, b) {
+    let i = array[a];
+    array[a] = array[b];
+    array[b] = i
+}
 
 module.exports = optimize;
