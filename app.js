@@ -308,9 +308,10 @@ function query(input, queryNo) {
                             } else {
                                 for (let i = 0; i < target.length; i++) {
                                     let row1 = target[i];
-                                    let cur = Buffer.allocUnsafe(row1.length + value.length - cutright * 4);
+                                    let right = cutright << 2;
+                                    let cur = Buffer.allocUnsafe(row1.length + value.length - right);
                                     row1.copy(cur);
-                                    value.copy(cur, row1.length, cutright * 4);
+                                    value.copy(cur, row1.length, right);
                                     acc.push(cur);
                                     if (acc.length > MAX_ROW) {
                                         let data = acc;
@@ -367,9 +368,9 @@ function query(input, queryNo) {
                                 } else {
                                     for (let i = 0; i < target.length; i++) {
                                         let row1 = target[i];
-                                        let left = cutleft * 4;
+                                        let left = cutleft << 2;
                                         let len1 = row1.length - left
-                                        let right = cutright * 4;
+                                        let right = cutright << 2;
                                         let cur = Buffer.allocUnsafe(row1.length + len1 - right);
                                         row1.copy(cur, 0, left);
                                         value.copy(cur, len1, right);
@@ -422,7 +423,7 @@ function query(input, queryNo) {
                                 } else {
                                     for (let i = 0; i < target.length; i++) {
                                         let row1 = target[i];
-                                        let right = cutright * 4;
+                                        let right = cutright << 2;
                                         let cur = Buffer.allocUnsafe(row1.length + value.length - right);
                                         row1.copy(cur);
                                         value.copy(cur, row1.length, right);
@@ -478,8 +479,8 @@ function query(input, queryNo) {
                                 } else {
                                     for (let i = 0; i < target.length; i++) {
                                         let row1 = target[i];
-                                        let left = cutleft * 4;
-                                        let right = cutright * 4;
+                                        let left = cutleft << 2;
+                                        let right = cutright << 2;
                                         let len1 = row1.length - left;
                                         let cur = Buffer.allocUnsafe(len1 + value.length - right);
                                         row1.copy(cur, 0, left);
