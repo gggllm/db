@@ -368,7 +368,7 @@ function optimize(select, from, where, filter, metaData) {
                 sequence.add(key);
                 // if a column in the table is going to be cutted, it need to be put in front of other column for
                 // easy cutting
-                let [tableName, column] = key.split('');
+                let [tableName, column] = [key.charAt(0), key.substr(1)];
                 let tableArray = tableWithoutFilter[tableName];
                 let range = newTablesCutRange[tableName] || 0;
                 newTablesCutRange[tableName] = range + 1;

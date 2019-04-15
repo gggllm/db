@@ -8,7 +8,7 @@ const readFileByLine = require('./readFileByLine');
 const block_size = (fs.statSync('./app.js').blksize || 4096);
 const buffer_size = block_size * 4;
 // 6000000 can pass small
-const MAX_ROW = 1000000;
+const MAX_ROW = 2400000;
 
 let builtFlag = false;
 const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
@@ -81,7 +81,8 @@ function build(path, tableName) {
     let maxArray = [];
     let uniqueArray = [];
     //261732673
-    if (fs.statSync(path).size < 561732673) {
+    // 561732673
+    if (fs.statSync(path).size < 161732673) {
         let ds = [];
         inMemoryDataBase[tableName] = ds;
         let cur = [];
@@ -365,7 +366,7 @@ function query(input, queryNo) {
                                         let cur = Buffer.concat([row1.slice(cutleft * 4), value.slice(cutright * 4)]);
                                         acc.push(cur);
                                         if (acc.length > MAX_ROW) {
-                                            let data = acc;
+                                            let data = acc1
                                             acc = [];
                                             await pipe(data);
                                         }
