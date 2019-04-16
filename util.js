@@ -17,7 +17,7 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
     //colums = [...colums]
     // analyze filter
     let filterColumn = _.groupBy(filters, 0);
-    let finalColumns = colums;
+    let finalColumns = colums.map((column, index) => column * 4);
     let filterColumns = [];
     //console.log(filters)
     for (let key in filterColumn) {
@@ -37,6 +37,7 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
         let db = inMemoryDataBase[table];
         let length = db.length;
         //let ch = [];
+        filters = filters.map(([column, filter]) => [column * 4, filter])
         for (let i = 0; i < length; i++) {
             let row = db[i];
             let flag = false;
@@ -193,7 +194,7 @@ function bufferToArray(buffer) {
 }
 
 function getColumn(row, column) {
-    return row.readInt32LE(column * 4)
+    return row.readInt32LE(column)
 }
 
 function setColumn(row, column, value) {

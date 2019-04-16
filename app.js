@@ -226,7 +226,7 @@ function query(input, queryNo) {
     let result = select.map(() => 0);
     //console.log(select, accIndex)
     select = select.map(([table, col]) => {
-        return accIndex[table][col + '']
+        return accIndex[table][col + ''] * 4
     });
     next(0).then(() => {// current pipeline is over
         total--;
@@ -279,8 +279,8 @@ function query(input, queryNo) {
                     let columns2 = [];
                     for (let i = 0; i < allJoin.length; i++) {
                         let {tableName, tableName2, column, column2} = allJoin[i];
-                        columns.push(accIndex[tableName][column]);
-                        columns2.push(tableIndex[tableName2][column2])
+                        columns.push(accIndex[tableName][column] * 4);
+                        columns2.push(tableIndex[tableName2][column2] * 4)
                     }
                     let db1 = new Map();
                     for (let index = 0; index < acc.length; index++) {
@@ -295,6 +295,7 @@ function query(input, queryNo) {
                         arr.push(row)
                     }
                     acc = [];
+                    const right = cutright << 2;
                     get(joinTable, tables[joinTable], async (value, index) => {
                         let key = getColumn(value, columns2[0]);
                         for (let colIndex = 1; colIndex < columns2.length; colIndex++) {
@@ -308,12 +309,12 @@ function query(input, queryNo) {
                                 let len = target.length;
                                 for (let i = 0; i < len; i++) {
                                     let row1 = target[i];
-                                    let length = row1.length / 4;
+                                    let length = row1.length;
                                     let len2 = select.length;
                                     for (let j = 0; j < len2; j++) {
                                         let col = select[j];
                                         if (col >= length) {
-                                            result[j] += getColumn(value, col - length + cutright)
+                                            result[j] += getColumn(value, col - length + right)
                                         } else {
                                             result[j] += getColumn(row1, col)
                                         }
@@ -323,7 +324,6 @@ function query(input, queryNo) {
                             } else {
                                 for (let i = 0; i < target.length; i++) {
                                     let row1 = target[i];
-                                    let right = cutright << 2;
                                     let cur = Buffer.allocUnsafe(row1.length + value.length - right);
                                     row1.copy(cur);
                                     value.copy(cur, row1.length, right);
@@ -349,13 +349,15 @@ function query(input, queryNo) {
                     let columns2 = [];
                     for (let i = 0; i < allJoin.length; i++) {
                         let {tableName, tableName2, column, column2} = allJoin[i];
-                        columns.push(tableIndex[tableName][column]);
-                        columns2.push(tableIndex[tableName2][column2])
+                        columns.push(tableIndex[tableName][column] * 4);
+                        columns2.push(tableIndex[tableName2][column2] * 4)
                     }
 
 
                     let db1 = new Map();
                     acc = [];
+                    const left = cutleft << 2;
+                    const right = cutright << 2;
                     get(tableName, tables[tableName], (value, index) => {
                         let key = getColumn(value, columns[0]);
                         for (let colIndex = 1; colIndex < columns.length; colIndex++) {
@@ -379,12 +381,12 @@ function query(input, queryNo) {
                                     let len = target.length;
                                     for (let i = 0; i < len; i++) {
                                         let row1 = target[i];
-                                        let length = row1.length / 4;
+                                        let length = row1.length;
                                         let len2 = select.length;
                                         for (let j = 0; j < len2; j++) {
                                             let col = select[j];
                                             if (col >= length) {
-                                                result[j] += getColumn(value, col - length + cutright)
+                                                result[j] += getColumn(value, col - length + right)
                                             } else {
                                                 result[j] += getColumn(row1, col)
                                             }
@@ -393,9 +395,7 @@ function query(input, queryNo) {
                                 } else {
                                     for (let i = 0; i < target.length; i++) {
                                         let row1 = target[i];
-                                        let left = cutleft << 2;
                                         let len1 = row1.length - left;
-                                        let right = cutright << 2;
                                         let cur = Buffer.allocUnsafe(row1.length + len1 - right);
                                         row1.copy(cur, 0, left);
                                         value.copy(cur, len1, right);
@@ -421,8 +421,8 @@ function query(input, queryNo) {
             if (rel.length > 1) {
                 return new Promise((resolve => {
                     //console.log(accIndex,tableName,column,acc[0].length)
-                    column = accIndex[tableName][column];
-                    column2 = tableIndex[tableName2][column2];
+                    column = accIndex[tableName][column] * 4;
+                    column2 = tableIndex[tableName2][column2] * 4;
                     let db1 = new Map()
                     for (let index = 0; index < acc.length; index++) {
                         let row = acc[index]
@@ -432,6 +432,7 @@ function query(input, queryNo) {
                         arr.push(row)
                     }
                     acc = [];
+                    const right = cutright << 2;
                     get(tableName2, tables[tableName2], async (value, index) => {
                             let target = db1.get(getColumn(value, column2));
                             if (target) {
@@ -439,12 +440,12 @@ function query(input, queryNo) {
                                     let len = target.length;
                                     for (let i = 0; i < len; i++) {
                                         let row1 = target[i];
-                                        let length = row1.length / 4;
+                                        let length = row1.length;
                                         let len2 = select.length;
                                         for (let j = 0; j < len2; j++) {
                                             let col = select[j];
                                             if (col >= length) {
-                                                result[j] += getColumn(value, col - length + cutright)
+                                                result[j] += getColumn(value, col - length + right)
                                             } else {
                                                 result[j] += getColumn(row1, col)
                                             }
@@ -453,7 +454,6 @@ function query(input, queryNo) {
                                 } else {
                                     for (let i = 0; i < target.length; i++) {
                                         let row1 = target[i];
-                                        let right = cutright << 2;
                                         let cur = Buffer.allocUnsafe(row1.length + value.length - right);
                                         row1.copy(cur);
                                         value.copy(cur, row1.length, right);
@@ -476,11 +476,13 @@ function query(input, queryNo) {
                 return new Promise(resolve => {
 
                     //change column name to its actual position in a row
-                    column = tableIndex[tableName][column];
-                    column2 = tableIndex[tableName2][column2];
+                    column = tableIndex[tableName][column] * 4;
+                    column2 = tableIndex[tableName2][column2] * 4;
 
                     let db1 = new Map();
                     acc = [];
+                    const left = cutleft << 2;
+                    const right = cutright << 2;
                     get(tableName, tables[tableName], (value, index) => {
                         let val = getColumn(value, column);
                         let list = db1.get(val) || [];
@@ -495,12 +497,12 @@ function query(input, queryNo) {
                                     let len = target.length;
                                     for (let i = 0; i < len; i++) {
                                         let row1 = target[i];
-                                        let length = row1.length / 4;
+                                        let length = row1.length;
                                         let len2 = select.length;
                                         for (let j = 0; j < len2; j++) {
                                             let col = select[j];
                                             if (col >= length) {
-                                                result[j] += getColumn(value, col - length + cutright)
+                                                result[j] += getColumn(value, col - length + right)
                                             } else {
                                                 result[j] += getColumn(row1, col)
                                             }
@@ -509,8 +511,6 @@ function query(input, queryNo) {
                                 } else {
                                     for (let i = 0; i < target.length; i++) {
                                         let row1 = target[i];
-                                        let left = cutleft << 2;
-                                        let right = cutright << 2;
                                         let len1 = row1.length - left;
                                         let cur = Buffer.allocUnsafe(len1 + value.length - right);
                                         row1.copy(cur, 0, left);
