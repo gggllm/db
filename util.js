@@ -128,6 +128,7 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
 
         function getData() {
             finalColumns.forEach((col, index) => {
+                col = col >> 2
                 let rl = readFromFile(table, col);
                 let rowNumber = 0;
                 let lastChunk;
