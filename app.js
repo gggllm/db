@@ -282,13 +282,27 @@ function query(input, queryNo) {
                         columns.push(accIndex[tableName][column]);
                         columns2.push(tableIndex[tableName2][column2])
                     }
-                    let db1 = _.groupBy(acc, (row) => {
-                        return _(columns).map((column) => getColumn(row, column)).join(',')
-                    });
+                    let db1 = new Map();
+                    for (let index = 0; index < acc.length; index++) {
+                        let row = acc[index];
+                        let key = getColumn(row, columns[0]);
+                        for (let colIndex = 1; colIndex < columns.length; colIndex++) {
+                            let column = columns[colIndex];
+                            key += ',' + getColumn(row, column)
+                        }
+                        let arr = db1.get(key) || [];
+                        db1.set(key, arr);
+                        arr.push(row)
+                    }
                     acc = [];
                     get(joinTable, tables[joinTable], async (value, index) => {
+                        let key = getColumn(value, columns2[0]);
+                        for (let colIndex = 1; colIndex < columns2.length; colIndex++) {
+                            let column = columns2[colIndex];
+                            key += ',' + getColumn(value, column)
+                        }
                         // if found the target, we just store the relationship we need
-                        let target = db1[_(columns2).map((column) => getColumn(value, column)).join(',')];
+                        let target = db1.get(key);
                         if (target) {
                             if (lastFlag) {
                                 let len = target.length;
@@ -343,13 +357,23 @@ function query(input, queryNo) {
                     let db1 = new Map();
                     acc = [];
                     get(tableName, tables[tableName], (value, index) => {
-                        let val = _(columns).map((column) => getColumn(value, column)).join(',');
-                        let list = db1.get(val) || [];
+                        let key = getColumn(value, columns[0]);
+                        for (let colIndex = 1; colIndex < columns.length; colIndex++) {
+                            let column = columns[colIndex];
+                            key += ',' + getColumn(value, column)
+                        }
+                        let list = db1.get(key) || [];
                         list.push(value);
-                        db1.set(val, list)
+                        db1.set(key, list)
                     }, inMemoryDataBase, () => {
                         get(tableName2, tables[tableName2], async (value, index) => {
-                            let target = db1.get(_(columns2).map((column) => getColumn(value, column)).join(','));
+                            let key = getColumn(value, columns2[0]);
+                            for (let colIndex = 1; colIndex < columns2.length; colIndex++) {
+                                let column = columns2[colIndex];
+                                key += ',' + getColumn(value, column)
+                            }
+                            // if found the target, we just store the relationship we need
+                            let target = db1.get(key);
                             if (target) {
                                 if (lastFlag) {
                                     let len = target.length;
@@ -370,7 +394,7 @@ function query(input, queryNo) {
                                     for (let i = 0; i < target.length; i++) {
                                         let row1 = target[i];
                                         let left = cutleft << 2;
-                                        let len1 = row1.length - left
+                                        let len1 = row1.length - left;
                                         let right = cutright << 2;
                                         let cur = Buffer.allocUnsafe(row1.length + len1 - right);
                                         row1.copy(cur, 0, left);
@@ -399,12 +423,17 @@ function query(input, queryNo) {
                     //console.log(accIndex,tableName,column,acc[0].length)
                     column = accIndex[tableName][column];
                     column2 = tableIndex[tableName2][column2];
-                    let db1 = _.groupBy(acc, (row) => {
-                        return getColumn(row, column)
-                    });
+                    let db1 = new Map()
+                    for (let index = 0; index < acc.length; index++) {
+                        let row = acc[index]
+                        let key = getColumn(row, column)
+                        let arr = db1.get(key) || []
+                        db1.set(key, arr)
+                        arr.push(row)
+                    }
                     acc = [];
                     get(tableName2, tables[tableName2], async (value, index) => {
-                            let target = db1[getColumn(value, column2)];
+                            let target = db1.get(getColumn(value, column2));
                             if (target) {
                                 if (lastFlag) {
                                     let len = target.length;
