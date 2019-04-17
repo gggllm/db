@@ -12,6 +12,7 @@ function readFromFile(table, col) {
 // cb is for streaming purpose
 // cb2 is for running sequentially
 
+
 async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filters = []) {
     // analyze filter
     //colums = [...colums]
