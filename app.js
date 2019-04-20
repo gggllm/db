@@ -178,7 +178,7 @@ function build(path, tableName) {
         metaData.min = minArray;
         // remove unique calculation to boost
         //metaData.unique = uniqueArray.map((set, index) => set.size || (maxArray[index] - minArray[index]));
-        metaData.unique = uniqueArray.map((set, index) => set.size || lineNumber);
+        metaData.unique = uniqueArray.map((set, index) => set.size || Math.min(lineNumber, maxArray[index] - minArray[index]));
         wlArray.length && wlArray.forEach((wl, index) => {
             wl.end(bufArray[index].slice(0, bufferIndexArray[index]), 'binary', () => {
                 columnFinishCount++;
