@@ -19,8 +19,7 @@ function parse(input) {
             }
         }
         let secondTable = value.substr(i + 3, 1);
-
-        return [firstTable, firstColumn, secondTable, parseInt(value.substring(i + 7, value.length - 1))]
+        return [firstTable, firstColumn, secondTable, parseInt(value.substring(i + 6))]
     });
     filter = parse_filter(filter).map((value) => {
         let firstTable = value.substr(0, 1);
@@ -42,10 +41,10 @@ function parse(input) {
     return [select, from, where, filter]
 }
 
-// parse(`SELECT SUM(D.c0), SUM(D.c4), SUM(C.c1)
-//        FROM A,B,C,D
-//        WHERE A.c1 = B.c0 AND A.c3 = D.c0 AND C.c2 = D.c2
-//         AND D.c3 > -9496;`)
+// console.log(parse(`SELECT SUM(A.c33), SUM(B.c115), SUM(F.c0)
+// FROM A, B, C, E, F
+// WHERE A.c3 = B.c567 AND A.c56 = C.c5 AND C.c1 = E.c0 AND B.c1 = F.c42
+// AND A.c155 = 0 AND C.c1 = 910 AND B.c2 = 0 AND E.c23 < -200 AND F.c12 < -100;`))
 
 function parse_select(select) {
     let regex = /SUM\(\w\.c\d+\)/;

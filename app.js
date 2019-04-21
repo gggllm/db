@@ -84,7 +84,7 @@ function build(path, tableName) {
     let uniqueArray = [];
     //261732673
     // 561732673
-    if (fs.statSync(path).size < 161732673) {
+    if (fs.statSync(path).size < 151732673) {
         let ds = [];
         inMemoryDataBase[tableName] = ds;
         let cur = [];
@@ -224,7 +224,7 @@ function query(input, queryNo) {
     // get the join sequence and tables that is needed for extraction
     let {joins, tables, tableIndex, filterByTable, useSituation, accIndex} = optimize(select, from, where, filter, metaDict);
     let result = select.map(() => 0);
-    //console.log(select, accIndex)
+    //console.error(select, from, where, filter,joins, tables, tableIndex, filterByTable, useSituation, accIndex)
     select = select.map(([table, col]) => {
         return accIndex[table][col + ''] * 4
     });
@@ -422,6 +422,7 @@ function query(input, queryNo) {
                 return new Promise((async resolve => {
                     //console.log(accIndex,tableName,column,acc[0].length)
                     column = accIndex[tableName][column] * 4;
+                    //console.error(column2)
                     let oriColumn2 = column2 * 4;
                     column2 = tableIndex[tableName2][column2] * 4;
                     let db1 = new Map();
