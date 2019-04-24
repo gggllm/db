@@ -4,7 +4,7 @@ function estimateCardinality() {
 
 }
 
-function optimize(select, from, where, filter, metaData,inMemoryDatabase) {
+function optimize(select, from, where, filter, metaData, inMemoryDatabase) {
     metaData = _.cloneDeep(metaData);
     let tables = {};
     let best = {};
@@ -156,12 +156,12 @@ function optimize(select, from, where, filter, metaData,inMemoryDatabase) {
         if (join.length === 0) {
             return null
         }
-        let co=1
-        if(!inMemoryDatabase[r]){
-            co=2
+        let co = 1
+        if (!inMemoryDatabase[r]) {
+            co = 1.5
         }
         // still problematic
-        return calculateSize(rel, r, join)*co
+        return calculateSize(rel, r, join) * co
     }
 
     function bestToJoins(best) {

@@ -10,7 +10,7 @@ const buffer_size = block_size * 4;
 // 6000000 can pass small
 // still need to pause the stream for fs await to work
 
-const MAX_ROW = 600000;
+const MAX_SPACE = 600000*28;
 
 let builtFlag = false;
 const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
@@ -258,7 +258,8 @@ function query(input, queryNo) {
         }
     }
 
-    async function join([rel, joinTable, allJoin, cutleft, cutright, accIndex], acc, joinNum) {
+    async function join([rel, joinTable, allJoin, cutleft, cutright, accIndex], acc=[], joinNum) {
+        const MAX_ROW=MAX_SPACE/ (acc.length?acc[0].length:8)
         //console.log(cutleft,cutright)
         async function pipe(data) {
             if (data.length === 0) {
