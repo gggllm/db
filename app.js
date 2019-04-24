@@ -10,7 +10,7 @@ const buffer_size = block_size * 4;
 // 6000000 can pass small
 // still need to pause the stream for fs await to work
 
-const MAX_ROW = 500000;
+const MAX_ROW = 600000;
 
 let builtFlag = false;
 const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
@@ -84,8 +84,8 @@ function build(path, tableName) {
     let uniqueArray = [];
     //261732673
     // 561732673
-    // for table smaller then 2mb, store them in memory
-    if (fs.statSync(path).size < 2000000) {
+    // for table smaller then 20mb, store them in memory
+    if (fs.statSync(path).size < 20000000) {
         let ds = [];
         inMemoryDataBase[tableName] = ds;
         let cur = [];
@@ -223,7 +223,7 @@ function addQuery(input, queryNo) {
 function query(input, queryNo) {
     let [select, from, where, filter] = parse(input);
     // get the join sequence and tables that is needed for extraction
-    let {joins, tables, tableIndex, filterByTable, useSituation, accIndex} = optimize(select, from, where, filter, metaDict);
+    let {joins, tables, tableIndex, filterByTable, useSituation, accIndex} = optimize(select, from, where, filter, metaDict,inMemoryDataBase);
     let result = select.map(() => 0);
     //console.error(select, from, where, filter,joins, tables, tableIndex, filterByTable, useSituation, accIndex)
     select = select.map(([table, col]) => {
