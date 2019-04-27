@@ -1,16 +1,16 @@
 const _ = require('lodash');
 const fs = require('fs');
-const {get, getAll, write, arrayToBuffer, bufferForEach, getColumn, bufferToArray, clearCache} = require('./util');
+const {get, write, arrayToBuffer, bufferForEach, getColumn, bufferToArray, clearCache} = require('./util');
 const parse = require('./parser');
 const optimize = require('./optimizer');
 const readFileByLine = require('./readFileByLine');
 // multiply by 4 to make sure it can fit by integer without padding
 const block_size = (fs.statSync('./app.js').blksize || 4096);
-const buffer_size = block_size << 2;
+const buffer_size = block_size * 4;
 // 6000000 can pass small
 // still need to pause the stream for fs await to work
 
-const MAX_SPACE = 600000 * 38;
+const MAX_SPACE = 600000*45;
 
 let builtFlag = false;
 const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
@@ -83,7 +83,6 @@ function build(path, tableName) {
     let uniqueArray = [];
     //261732673
     // 561732673
-    // 20000000
     // for table smaller then 20mb, store them in memory
     if (fs.statSync(path).size < 20000000) {
         let ds = [];
@@ -179,7 +178,7 @@ function build(path, tableName) {
         metaData.min = minArray;
         // remove unique calculation to boost
         //metaData.unique = uniqueArray.map((set, index) => set.size || (maxArray[index] - minArray[index]));
-        metaData.unique = uniqueArray.map((set, index) => Math.min(lineNumber, maxArray[index] - minArray[index]));
+        metaData.unique = uniqueArray.map((set, index) => set.size || Math.min(lineNumber, maxArray[index] - minArray[index]));
         wlArray.length && wlArray.forEach((wl, index) => {
             wl.end(bufArray[index].slice(0, bufferIndexArray[index]), 'binary', () => {
                 columnFinishCount++;
@@ -223,11 +222,11 @@ function addQuery(input, queryNo) {
 function query(input, queryNo) {
     let [select, from, where, filter] = parse(input);
     // get the join sequence and tables that is needed for extraction
-    let {joins, tables, tableIndex, filterByTable, useSituation, accIndex} = optimize(select, from, where, filter, metaDict, inMemoryDataBase);
+    let {joins, tables, tableIndex, filterByTable, useSituation, accIndex} = optimize(select, from, where, filter, metaDict,inMemoryDataBase);
     let result = select.map(() => 0);
     //console.error(select, from, where, filter,joins, tables, tableIndex, filterByTable, useSituation, accIndex)
     select = select.map(([table, col]) => {
-        return accIndex[table][col + ''] << 2
+        return accIndex[table][col + ''] * 4
     });
     next(0).then(() => {// current pipeline is over
         total--;
@@ -258,9 +257,8 @@ function query(input, queryNo) {
         }
     }
 
-    async function join([rel, joinTable, allJoin, cutleft, cutright, accIndex], acc = [], joinNum) {
-        const MAX_ROW = MAX_SPACE / (acc.length ? acc[0].length : 8)
-
+    async function join([rel, joinTable, allJoin, cutleft, cutright, accIndex], acc=[], joinNum) {
+        const MAX_ROW=MAX_SPACE/ (acc.length?acc[0].length:8)
         //console.log(cutleft,cutright)
         async function pipe(data) {
             if (data.length === 0) {
@@ -282,13 +280,13 @@ function query(input, queryNo) {
                     let columns2 = [];
                     for (let i = 0; i < allJoin.length; i++) {
                         let {tableName, tableName2, column, column2} = allJoin[i];
-                        columns.push(accIndex[tableName][column] << 2);
-                        columns2.push(tableIndex[tableName2][column2] << 2)
+                        columns.push(accIndex[tableName][column] * 4);
+                        columns2.push(tableIndex[tableName2][column2] * 4)
                     }
                     let db1 = new Map();
                     for (let index = 0; index < acc.length; index++) {
                         let row = acc[index];
-                        acc[index] = null
+                        acc[index]=null
                         let key = getColumn(row, columns[0]);
                         for (let colIndex = 1; colIndex < columns.length; colIndex++) {
                             let column = columns[colIndex];
@@ -301,9 +299,79 @@ function query(input, queryNo) {
                     }
                     acc = [];
                     const right = cutright << 2;
-                    getAll(joinTable, tables[joinTable], async (all, index) => {
-                        for (let i = 0; i < all.length; i++) {
-                            let value = all[i]
+                    get(joinTable, tables[joinTable], async (value, index) => {
+                        let key = getColumn(value, columns2[0]);
+                        for (let colIndex = 1; colIndex < columns2.length; colIndex++) {
+                            let column = columns2[colIndex];
+                            key += ',' + getColumn(value, column)
+                        }
+                        // if found the target, we just store the relationship we need
+                        let target = db1.get(key);
+                        if (target) {
+                            if (lastFlag) {
+                                let len = target.length;
+                                for (let i = 0; i < len; i++) {
+                                    let row1 = target[i];
+                                    let length = row1.length;
+                                    let len2 = select.length;
+                                    for (let j = 0; j < len2; j++) {
+                                        let col = select[j];
+                                        if (col >= length) {
+                                            result[j] += getColumn(value, col - length + right)
+                                        } else {
+                                            result[j] += getColumn(row1, col)
+                                        }
+                                    }
+                                }
+
+                            } else {
+                                for (let i = 0; i < target.length; i++) {
+                                    let row1 = target[i];
+                                    let cur = Buffer.allocUnsafe(row1.length + value.length - right);
+                                    row1.copy(cur);
+                                    value.copy(cur, row1.length, right);
+                                    acc.push(cur);
+                                    if (acc.length > MAX_ROW) {
+                                        let data = acc;
+                                        acc = [];
+                                        await pipe(data);
+                                    }
+                                }
+                            }
+                        }
+                    }, inMemoryDataBase, async () => {
+                        resolve(pipe(acc))
+                    }, useSituation, filterByTable[joinTable])
+                }))
+            } else {
+                let tableName = rel[0];
+                let tableName2 = joinTable;
+                return new Promise(resolve => {
+                    //change column name to its actual position in a row
+                    let columns = [];
+                    let columns2 = [];
+                    for (let i = 0; i < allJoin.length; i++) {
+                        let {tableName, tableName2, column, column2} = allJoin[i];
+                        columns.push(tableIndex[tableName][column] * 4);
+                        columns2.push(tableIndex[tableName2][column2] * 4)
+                    }
+
+
+                    let db1 = new Map();
+                    acc = [];
+                    const left = cutleft << 2;
+                    const right = cutright << 2;
+                    get(tableName, tables[tableName], (value, index) => {
+                        let key = getColumn(value, columns[0]);
+                        for (let colIndex = 1; colIndex < columns.length; colIndex++) {
+                            let column = columns[colIndex];
+                            key += ',' + getColumn(value, column)
+                        }
+                        let list = db1.get(key) || [];
+                        list.push(value);
+                        db1.set(key, list)
+                    }, inMemoryDataBase, () => {
+                        get(tableName2, tables[tableName2], async (value, index) => {
                             let key = getColumn(value, columns2[0]);
                             for (let colIndex = 1; colIndex < columns2.length; colIndex++) {
                                 let column = columns2[colIndex];
@@ -327,101 +395,23 @@ function query(input, queryNo) {
                                             }
                                         }
                                     }
-
                                 } else {
                                     for (let i = 0; i < target.length; i++) {
                                         let row1 = target[i];
-                                        let cur = Buffer.allocUnsafe(row1.length + value.length - right);
-                                        row1.copy(cur);
-                                        value.copy(cur, row1.length, right);
+                                        let len1 = row1.length - left;
+                                        let cur = Buffer.allocUnsafe(row1.length + len1 - right);
+                                        row1.copy(cur, 0, left);
+                                        value.copy(cur, len1, right);
                                         acc.push(cur);
                                         if (acc.length > MAX_ROW) {
-                                            let data = acc;
+                                            let data = acc1;
                                             acc = [];
+
                                             await pipe(data);
                                         }
                                     }
                                 }
-                            }
-                        }
-                    }, inMemoryDataBase, async () => {
-                        resolve(pipe(acc))
-                    }, useSituation, filterByTable[joinTable])
-                }))
-            } else {
-                let tableName = rel[0];
-                let tableName2 = joinTable;
-                return new Promise(resolve => {
-                    //change column name to its actual position in a row
-                    let columns = [];
-                    let columns2 = [];
-                    for (let i = 0; i < allJoin.length; i++) {
-                        let {tableName, tableName2, column, column2} = allJoin[i];
-                        columns.push(tableIndex[tableName][column] << 2);
-                        columns2.push(tableIndex[tableName2][column2] << 2)
-                    }
 
-
-                    let db1 = new Map();
-                    acc = [];
-                    const left = cutleft << 2;
-                    const right = cutright << 2;
-                    getAll(tableName, tables[tableName], (all, index) => {
-                        for (let i = 0; i < all.length; i++) {
-                            let value = all[i]
-                            let key = getColumn(value, columns[0]);
-                            for (let colIndex = 1; colIndex < columns.length; colIndex++) {
-                                let column = columns[colIndex];
-                                key += ',' + getColumn(value, column)
-                            }
-                            let list = db1.get(key) || [];
-                            list.push(value);
-                            db1.set(key, list)
-                        }
-                    }, inMemoryDataBase, () => {
-                        getAll(tableName2, tables[tableName2], async (all, index) => {
-                            for (let i = 0; i < all.length; i++) {
-                                let value = all[i]
-                                let key = getColumn(value, columns2[0]);
-                                for (let colIndex = 1; colIndex < columns2.length; colIndex++) {
-                                    let column = columns2[colIndex];
-                                    key += ',' + getColumn(value, column)
-                                }
-                                // if found the target, we just store the relationship we need
-                                let target = db1.get(key);
-                                if (target) {
-                                    if (lastFlag) {
-                                        let len = target.length;
-                                        for (let i = 0; i < len; i++) {
-                                            let row1 = target[i];
-                                            let length = row1.length;
-                                            let len2 = select.length;
-                                            for (let j = 0; j < len2; j++) {
-                                                let col = select[j];
-                                                if (col >= length) {
-                                                    result[j] += getColumn(value, col - length + right)
-                                                } else {
-                                                    result[j] += getColumn(row1, col)
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        for (let i = 0; i < target.length; i++) {
-                                            let row1 = target[i];
-                                            let len1 = row1.length - left;
-                                            let cur = Buffer.allocUnsafe(row1.length + len1 - right);
-                                            row1.copy(cur, 0, left);
-                                            value.copy(cur, len1, right);
-                                            acc.push(cur);
-                                            if (acc.length > MAX_ROW) {
-                                                let data = acc1;
-                                                acc = [];
-
-                                                await pipe(data);
-                                            }
-                                        }
-                                    }
-                                }
                             }// if no same drop
                         }, inMemoryDataBase, async () => {
                             resolve(pipe(acc))
@@ -434,14 +424,14 @@ function query(input, queryNo) {
             if (rel.length > 1) {
                 return new Promise((async resolve => {
                     //console.log(accIndex,tableName,column,acc[0].length)
-                    column = accIndex[tableName][column] << 2;
+                    column = accIndex[tableName][column] * 4;
                     //console.error(column2)
-                    let oriColumn2 = column2 << 2;
-                    column2 = tableIndex[tableName2][column2] << 2;
+                    let oriColumn2 = column2 * 4;
+                    column2 = tableIndex[tableName2][column2] * 4;
                     let db1 = new Map();
                     for (let index = 0; index < acc.length; index++) {
                         let row = acc[index];
-                        acc[index] = null
+                        acc[index]=null
                         let key = getColumn(row, column);
                         let arr = db1.get(key) || [];
                         db1.set(key, arr);
@@ -452,11 +442,11 @@ function query(input, queryNo) {
                     if (inMemoryDataBase[tableName2]) {
                         let colums = tables[tableName2];
                         let filters = filterByTable[tableName2] || [];
-                        let finalColumns = colums.map((column, index) => column << 2);
+                        let finalColumns = colums.map((column, index) => column * 4);
                         let db = inMemoryDataBase[tableName2];
                         let length = db.length;
                         //let ch = [];
-                        filters = filters.map(([column, filter]) => [column << 2, filter]);
+                        filters = filters.map(([column, filter]) => [column * 4, filter]);
                         for (let i = 0; i < length; i++) {
                             let row = db[i];
                             let flag = false;
@@ -474,9 +464,9 @@ function query(input, queryNo) {
                                 continue
                             }
                             let length2 = finalColumns.length;
-                            let value = Buffer.allocUnsafe(length2 << 2);
+                            let value = Buffer.allocUnsafe(length2 * 4);
                             for (let i = 0; i < length2; i++) {
-                                value.writeInt32LE(getColumn(row, finalColumns[i]), i << 2)
+                                value.writeInt32LE(getColumn(row, finalColumns[i]), i * 4)
                             }
                             let target = db1.get(getColumn(value, column2));
                             if (lastFlag) {
@@ -511,38 +501,35 @@ function query(input, queryNo) {
                         }
                         resolve(pipe(acc))
                     } else {
-                        getAll(tableName2, tables[tableName2], async (all, index) => {
-                                for (let i = 0; i < all.length; i++) {
-                                    let value = all[i]
-                                    let target = db1.get(getColumn(value, column2));
-                                    if (target) {
-                                        if (lastFlag) {
-                                            let len = target.length;
-                                            for (let i = 0; i < len; i++) {
-                                                let row1 = target[i];
-                                                let length = row1.length;
-                                                let len2 = select.length;
-                                                for (let j = 0; j < len2; j++) {
-                                                    let col = select[j];
-                                                    if (col >= length) {
-                                                        result[j] += getColumn(value, col - length + right)
-                                                    } else {
-                                                        result[j] += getColumn(row1, col)
-                                                    }
+                        get(tableName2, tables[tableName2], async (value, index) => {
+                                let target = db1.get(getColumn(value, column2));
+                                if (target) {
+                                    if (lastFlag) {
+                                        let len = target.length;
+                                        for (let i = 0; i < len; i++) {
+                                            let row1 = target[i];
+                                            let length = row1.length;
+                                            let len2 = select.length;
+                                            for (let j = 0; j < len2; j++) {
+                                                let col = select[j];
+                                                if (col >= length) {
+                                                    result[j] += getColumn(value, col - length + right)
+                                                } else {
+                                                    result[j] += getColumn(row1, col)
                                                 }
                                             }
-                                        } else {
-                                            for (let i = 0; i < target.length; i++) {
-                                                let row1 = target[i];
-                                                let cur = Buffer.allocUnsafe(row1.length + value.length - right);
-                                                row1.copy(cur);
-                                                value.copy(cur, row1.length, right);
-                                                acc.push(cur);
-                                                if (acc.length > MAX_ROW) {
-                                                    let data = acc;
-                                                    acc = [];
-                                                    await pipe(data);
-                                                }
+                                        }
+                                    } else {
+                                        for (let i = 0; i < target.length; i++) {
+                                            let row1 = target[i];
+                                            let cur = Buffer.allocUnsafe(row1.length + value.length - right);
+                                            row1.copy(cur);
+                                            value.copy(cur, row1.length, right);
+                                            acc.push(cur);
+                                            if (acc.length > MAX_ROW) {
+                                                let data = acc;
+                                                acc = [];
+                                                await pipe(data);
                                             }
                                         }
                                     }
@@ -557,32 +544,29 @@ function query(input, queryNo) {
                 return new Promise(resolve => {
 
                     //change column name to its actual position in a row
-                    let oriColumn = column << 2;
-                    let oriColumn2 = column2 << 2;
-                    column = tableIndex[tableName][column] << 2;
-                    column2 = tableIndex[tableName2][column2] << 2;
+                    let oriColumn = column * 4;
+                    let oriColumn2 = column2 * 4;
+                    column = tableIndex[tableName][column] * 4;
+                    column2 = tableIndex[tableName2][column2] * 4;
 
                     let db1 = new Map();
                     acc = [];
                     const left = cutleft << 2;
                     const right = cutright << 2;
-                    getAll(tableName, tables[tableName], (all, index) => {
-                        for (let i = 0; i < all.length; i++) {
-                            let value = all[i]
-                            let val = getColumn(value, column);
-                            let list = db1.get(val) || [];
-                            list.push(value);
-                            db1.set(val, list)
-                        }
+                    get(tableName, tables[tableName], (value, index) => {
+                        let val = getColumn(value, column);
+                        let list = db1.get(val) || [];
+                        list.push(value);
+                        db1.set(val, list)
                     }, inMemoryDataBase, async () => {
                         if (inMemoryDataBase[tableName2]) {
                             let colums = tables[tableName2];
                             let filters = filterByTable[tableName2] || [];
-                            let finalColumns = colums.map((column, index) => column << 2);
+                            let finalColumns = colums.map((column, index) => column * 4);
                             let db = inMemoryDataBase[tableName2];
                             let length = db.length;
                             //let ch = [];
-                            filters = filters.map(([column, filter]) => [column << 2, filter]);
+                            filters = filters.map(([column, filter]) => [column * 4, filter]);
                             for (let i = 0; i < length; i++) {
                                 let row = db[i];
                                 let flag = false;
@@ -600,9 +584,9 @@ function query(input, queryNo) {
                                     continue
                                 }
                                 let length2 = finalColumns.length;
-                                let value = Buffer.allocUnsafe(length2 << 2);
+                                let value = Buffer.allocUnsafe(length2 * 4);
                                 for (let i = 0; i < length2; i++) {
-                                    value.writeInt32LE(getColumn(row, finalColumns[i]), i << 2)
+                                    value.writeInt32LE(getColumn(row, finalColumns[i]), i * 4)
                                 }
                                 let target = db1.get(getColumn(value, column2));
                                 if (lastFlag) {
@@ -638,40 +622,37 @@ function query(input, queryNo) {
                             }
                             resolve(pipe(acc))
                         } else {
-                            getAll(tableName2, tables[tableName2], async (all, index) => {
-                                for (let i = 0; i < all.length; i++) {
-                                    let value = all[i]
-                                    // if found the target, we just store the relationship we need
-                                    let target = db1.get(getColumn(value, column2));
-                                    if (target) {
-                                        if (lastFlag) {
-                                            let len = target.length;
-                                            for (let i = 0; i < len; i++) {
-                                                let row1 = target[i];
-                                                let length = row1.length;
-                                                let len2 = select.length;
-                                                for (let j = 0; j < len2; j++) {
-                                                    let col = select[j];
-                                                    if (col >= length) {
-                                                        result[j] += getColumn(value, col - length + right)
-                                                    } else {
-                                                        result[j] += getColumn(row1, col)
-                                                    }
+                            get(tableName2, tables[tableName2], async (value, index) => {
+                                // if found the target, we just store the relationship we need
+                                let target = db1.get(getColumn(value, column2));
+                                if (target) {
+                                    if (lastFlag) {
+                                        let len = target.length;
+                                        for (let i = 0; i < len; i++) {
+                                            let row1 = target[i];
+                                            let length = row1.length;
+                                            let len2 = select.length;
+                                            for (let j = 0; j < len2; j++) {
+                                                let col = select[j];
+                                                if (col >= length) {
+                                                    result[j] += getColumn(value, col - length + right)
+                                                } else {
+                                                    result[j] += getColumn(row1, col)
                                                 }
                                             }
-                                        } else {
-                                            for (let i = 0; i < target.length; i++) {
-                                                let row1 = target[i];
-                                                let len1 = row1.length - left;
-                                                let cur = Buffer.allocUnsafe(len1 + value.length - right);
-                                                row1.copy(cur, 0, left);
-                                                value.copy(cur, len1, right);
-                                                acc.push(cur);
-                                                if (acc.length > MAX_ROW) {
-                                                    let data = acc;
-                                                    acc = [];
-                                                    await pipe(data);
-                                                }
+                                        }
+                                    } else {
+                                        for (let i = 0; i < target.length; i++) {
+                                            let row1 = target[i];
+                                            let len1 = row1.length - left;
+                                            let cur = Buffer.allocUnsafe(len1 + value.length - right);
+                                            row1.copy(cur, 0, left);
+                                            value.copy(cur, len1, right);
+                                            acc.push(cur);
+                                            if (acc.length > MAX_ROW) {
+                                                let data = acc;
+                                                acc = [];
+                                                await pipe(data);
                                             }
                                         }
                                     }
