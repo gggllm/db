@@ -138,7 +138,7 @@ function optimize(select, from, where, filter, metaData, inMemoryDatabase) {
                 continue
             }
             let c = cost(relNew, r);
-            console.error(relNew,r,c)
+            //console.error(relNew,r,c)
             if (c === null) {
                 continue
             }
