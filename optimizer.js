@@ -158,6 +158,7 @@ function optimize(select, from, where, filter, metaData, inMemoryDatabase) {
         if (join.length === 0) {
             return null
         }
+
         // still problematic
         return calculateSize(rel, r, join)
     }
