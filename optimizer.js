@@ -126,7 +126,8 @@ function optimize(select, from, where, filter, metaData, inMemoryDatabase) {
         }
         // base case
         if (rels.length === 1) {
-            return [metaData[rels[0]].size, rels]
+            //return [metaData[rels[0]].size, rels]
+            return 0
         }
         let curr;
         let p = [];
@@ -141,7 +142,7 @@ function optimize(select, from, where, filter, metaData, inMemoryDatabase) {
                 continue
             }
             let totalCost = internalOrder + c;
-            if (totalCost < curr || !curr) {
+            if (totalCost <= curr || !curr) {
                 p = [...path];
                 curr = totalCost;
                 p.push(r)
@@ -156,9 +157,9 @@ function optimize(select, from, where, filter, metaData, inMemoryDatabase) {
         if (join.length === 0) {
             return null
         }
-        let co = 1
+        let co = 1;
         if (!inMemoryDatabase[r]) {
-            co = 1.5
+            co = 3
         }
         // still problematic
         return calculateSize(rel, r, join) * co
@@ -255,7 +256,8 @@ function optimize(select, from, where, filter, metaData, inMemoryDatabase) {
     }));
 
     for (let tableName in tableP) {
-        metaData[tableName].size = tableP[tableName].reduce((acc, cur) => acc * cur) * metaData[tableName].size
+        let percents = tableP[tableName];
+        metaData[tableName].size = percents.reduce((acc, cur) => acc * cur) * metaData[tableName].size
     }
 
 
@@ -324,14 +326,14 @@ function optimize(select, from, where, filter, metaData, inMemoryDatabase) {
         let newTables = {};
         let newTablesCutRange = {};
         accIndex = {};
-        accLength = 0
+        accLength = 0;
 
         function addIndex(tableName) {
-            let index = {}
-            accIndex[tableName] = index
-            let table = tableWithoutFilter[tableName]
+            let index = {};
+            accIndex[tableName] = index;
+            let table = tableWithoutFilter[tableName];
             for (let idx in table) {
-                let col = table[idx]
+                let col = table[idx];
                 if (!sequence.has(tableName + col)) {
                     index[col] = accLength++
                 }
@@ -377,7 +379,7 @@ function optimize(select, from, where, filter, metaData, inMemoryDatabase) {
                 let range = newTablesCutRange[tableName] || 0;
                 newTablesCutRange[tableName] = range + 1;
                 //swap the removed column to the front of the array
-                swap(tableArray, range, tableArray.indexOf(parseInt(column)))
+                swap(tableArray, range, tableArray.indexOf(parseInt(column)));
                 return 1
             } else {
                 newUseSituation[key] = count;

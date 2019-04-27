@@ -10,7 +10,7 @@ const buffer_size = block_size * 4;
 // 6000000 can pass small
 // still need to pause the stream for fs await to work
 
-const MAX_SPACE = 600000*28;
+const MAX_SPACE = 600000*38;
 
 let builtFlag = false;
 const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
@@ -21,7 +21,6 @@ if (!fs.existsSync('./test')) {
 let metaDict = {};
 let inMemoryDataBase = {};
 let buildCount = 0;
-
 
 let readline = require('readline');
 let command = readline.createInterface({
@@ -287,6 +286,7 @@ function query(input, queryNo) {
                     let db1 = new Map();
                     for (let index = 0; index < acc.length; index++) {
                         let row = acc[index];
+                        acc[index]=null
                         let key = getColumn(row, columns[0]);
                         for (let colIndex = 1; colIndex < columns.length; colIndex++) {
                             let column = columns[colIndex];
@@ -295,6 +295,7 @@ function query(input, queryNo) {
                         let arr = db1.get(key) || [];
                         db1.set(key, arr);
                         arr.push(row)
+
                     }
                     acc = [];
                     const right = cutright << 2;
@@ -430,6 +431,7 @@ function query(input, queryNo) {
                     let db1 = new Map();
                     for (let index = 0; index < acc.length; index++) {
                         let row = acc[index];
+                        acc[index]=null
                         let key = getColumn(row, column);
                         let arr = db1.get(key) || [];
                         db1.set(key, arr);
