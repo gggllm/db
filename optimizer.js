@@ -127,7 +127,7 @@ function optimize(select, from, where, filter, metaData, inMemoryDatabase) {
         // base case
         if (rels.length === 1) {
             //return [metaData[rels[0]].size, rels]
-            return 0
+            return [0,rels]
         }
         let curr;
         let p = [];
