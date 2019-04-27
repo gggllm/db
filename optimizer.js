@@ -43,6 +43,7 @@ function optimize(select, from, where, filter, metaData, inMemoryDatabase) {
 
     //Todo
     function calculateSize(rel, addedTableName, joins) {
+        rel=[...rel]
         if (!joins.push) {
             joins = [joins]
         }
@@ -54,7 +55,7 @@ function optimize(select, from, where, filter, metaData, inMemoryDatabase) {
             let cr = cache[resRel];
             return cr.size
         }
-        let last = getCache(rel.join(''));
+        let last = getCache(rel.sort().join(''));
         // cannot reach
         if (!last.size) {
             return last
@@ -126,8 +127,7 @@ function optimize(select, from, where, filter, metaData, inMemoryDatabase) {
         }
         // base case
         if (rels.length === 1) {
-            //return [metaData[rels[0]].size, rels]
-            return [0,rels]
+            return [metaData[rels[0]].size, rels]
         }
         let curr;
         let p = [];
@@ -138,6 +138,7 @@ function optimize(select, from, where, filter, metaData, inMemoryDatabase) {
                 continue
             }
             let c = cost(relNew, r);
+            console.error(relNew,r,c)
             if (c === null) {
                 continue
             }
@@ -157,12 +158,8 @@ function optimize(select, from, where, filter, metaData, inMemoryDatabase) {
         if (join.length === 0) {
             return null
         }
-        let co = 1;
-        if (!inMemoryDatabase[r]) {
-            co = 3
-        }
         // still problematic
-        return calculateSize(rel, r, join) * co
+        return calculateSize(rel, r, join)
     }
 
     function bestToJoins(best) {
@@ -389,7 +386,6 @@ function optimize(select, from, where, filter, metaData, inMemoryDatabase) {
 
         return accIndex
     }
-
     // console.log(accIndices)
     //console.log(joins);
     return {
