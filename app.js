@@ -315,6 +315,11 @@ function query(input, queryNo) {
                     }
                     acc = [];
                     const right = cutright << 2;
+                    if(db1.size===0){
+                        resolve(pipe([]))
+                        return
+                    }
+                    const selectLength=select.map((val)=>val+right-db1.get(db1.keys().next().value)[0].length)
                     get(joinTable, tables[joinTable],  (value, index) => {
                         let key = value.readInt32LE(columns2[0]);
                         for (let colIndex = 1; colIndex < columns2.length; colIndex++) {
@@ -333,7 +338,7 @@ function query(input, queryNo) {
                                     for (let j = 0; j < len2; j++) {
                                         let col = select[j];
                                         if (col >= length) {
-                                            result[j] += value.readInt32LE(col - length + right)
+                                            result[j] += value.readInt32LE(selectLength[j])
                                         } else {
                                             result[j] += row1.readInt32LE(col)
                                         }
@@ -372,6 +377,11 @@ function query(input, queryNo) {
                     acc = [];
                     const left = cutleft << 2;
                     const right = cutright << 2;
+                    if(db1.size===0){
+                        resolve(pipe([]))
+                        return
+                    }
+                    const selectLength=select.map((val)=>val+right-db1.get(db1.keys().next().value)[0].length)
                     get(tableName, tables[tableName], (value, index) => {
                         let key = value.readInt32LE(columns[0]);
                         for (let colIndex = 1; colIndex < columns.length; colIndex++) {
@@ -400,7 +410,7 @@ function query(input, queryNo) {
                                         for (let j = 0; j < len2; j++) {
                                             let col = select[j];
                                             if (col >= length) {
-                                                result[j] += row1.readInt32LE(col - length + right)
+                                                result[j] += row1.readInt32LE(selectLength[j])
                                             } else {
                                                 result[j] += row1.readInt32LE(col)
                                             }
@@ -444,6 +454,11 @@ function query(input, queryNo) {
                     }
                     acc = [];
                     const right = cutright << 2;
+                    if(db1.size===0){
+                        resolve(pipe([]))
+                        return
+                    }
+                    const selectLength=select.map((val)=>val+right-db1.get(db1.keys().next().value)[0].length)
                     if (inMemoryDataBase[tableName2]) {
                         let colums = tables[tableName2];
                         let filters = filterByTable[tableName2] || [];
@@ -483,7 +498,7 @@ function query(input, queryNo) {
                                     for (let j = 0; j < len2; j++) {
                                         let col = select[j];
                                         if (col >= length) {
-                                            result[j] += value.readInt32LE(col - length + right)
+                                            result[j] += value.readInt32LE(selectLength[j])
                                         } else {
                                             result[j] += row1.readInt32LE(col)
                                         }
@@ -513,7 +528,7 @@ function query(input, queryNo) {
                                             for (let j = 0; j < len2; j++) {
                                                 let col = select[j];
                                                 if (col >= length) {
-                                                    result[j] += value.readInt32LE(col - length + right)
+                                                    result[j] += value.readInt32LE(selectLength[j])
                                                 } else {
                                                     result[j] += row1.readInt32LE(col)
                                                 }
@@ -554,6 +569,11 @@ function query(input, queryNo) {
                         list.push(value);
                         db1.set(val, list)
                     }, inMemoryDataBase,  () => {
+                        if(db1.size===0){
+                            resolve(pipe([]))
+                            return
+                        }
+                        const selectLength=select.map((val)=>val+right-db1.get(db1.keys().next().value)[0].length)
                         if (inMemoryDataBase[tableName2]) {
                             let colums = tables[tableName2];
                             let filters = filterByTable[tableName2] || [];
@@ -593,7 +613,7 @@ function query(input, queryNo) {
                                         for (let j = 0; j < len2; j++) {
                                             let col = select[j];
                                             if (col >= length) {
-                                                result[j] += value.readInt32LE(col - length + right)
+                                                result[j] += value.readInt32LE(selectLength[j])
                                             } else {
                                                 result[j] += row1.readInt32LE(col)
                                             }
@@ -625,7 +645,7 @@ function query(input, queryNo) {
                                             for (let j = 0; j < len2; j++) {
                                                 let col = select[j];
                                                 if (col >= length) {
-                                                    result[j] += value.readInt32LE(col - length + right)
+                                                    result[j] += value.readInt32LE(selectLength[j])
                                                 } else {
                                                     result[j] += row1.readInt32LE(col)
                                                 }
