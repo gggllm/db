@@ -13,7 +13,7 @@ function readFromFile(table, col) {
 // cb2 is for running sequentially
 
 
-async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filters = []) {
+ function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filters = []) {
     // analyze filter
     //colums = [...colums]
     // analyze filter
@@ -29,7 +29,7 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
     //     let db = cache[table];
     //     let length = db.length;
     //     for (let i = 0; i < length; i++) {
-    //         await cb(db[i], i)
+    //          cb(db[i], i)
     //     }
     //     cb2 && cb2()
     // } else
@@ -57,7 +57,7 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
             for (let i = 0; i < length2; i++) {
                 res.writeInt32LE(getColumn(row, finalColumns[i]), i * 4)
             }
-            await cb(res, i);
+             cb(res, i);
             //ch.push(res)
         }
         //cache[table] = ch;
@@ -78,7 +78,7 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
             let rowNumber = 0;
             let colFilters = _.map(filters[col], 1);
             let lastChunk;
-            rl.on('data', async (chunk) => {
+            rl.on('data',  (chunk) => {
                 if (lastChunk && lastChunk.length !== 0) {
                     chunk = Buffer.concat([lastChunk, chunk])
                 }
@@ -108,22 +108,22 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
                     // sizeArray[rowNumber] = ++size;
                     // if (size === columnNumber) {
                     //     let row = db[rowNumber]
-                    //     await cb(row, rowNumber);
+                    //      cb(row, rowNumber);
                     //     db[rowNumber] = null //delete the finished row
                     // }
                     rowNumber++;
                 }
                 lastChunk = chunk.slice(cursor)
             });
-            rl.on('end', async () => {
+            rl.on('end',  () => {
                 filterFinished++;
                 if (filterFinished === filterCount) {
-                    await getData();
+                     getData();
                 }
             })
         });
         if (filterColumns.length === 0) {
-            await getData()
+             getData()
         }
         let bufferSize = finalColumns.length * 4;
 
@@ -133,7 +133,7 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
                 let rl = readFromFile(table, col);
                 let rowNumber = 0;
                 let lastChunk;
-                rl.on('data', async (chunk) => {
+                rl.on('data',  (chunk) => {
                     if (lastChunk && lastChunk.length !== 0) {
                         chunk = Buffer.concat([lastChunk, chunk])
                     }
@@ -153,7 +153,7 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
                         sizeArray[rowNumber] = ++size;
                         setColumn(row, index, value);
                         if (size === columnNumber) {
-                            await cb(row, rowNumber);
+                             cb(row, rowNumber);
                             db[rowNumber] = null //delete the finished row
                         }
                         rowNumber++;
@@ -171,7 +171,7 @@ async function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filte
     }
 }
 
-async function getAll(table, colums, cb, inMemoryDataBase, cb2, useSituation, filters = []) {
+ function getAll(table, colums, cb, inMemoryDataBase, cb2, useSituation, filters = []) {
     // analyze filter
     //colums = [...colums]
     // analyze filter
@@ -218,7 +218,7 @@ async function getAll(table, colums, cb, inMemoryDataBase, cb2, useSituation, fi
         //     let db = cache[table];
         //     let length = db.length;
         //     for (let i = 0; i < length; i++) {
-        //         await cb(db[i], i)
+        //          cb(db[i], i)
         //     }
         //     cb2 && cb2()
         // } else
@@ -238,7 +238,7 @@ async function getAll(table, colums, cb, inMemoryDataBase, cb2, useSituation, fi
             let rowNumber = 0;
             let colFilters = _.map(filters[col], 1);
             let lastChunk;
-            rl.on('data', async (chunk) => {
+            rl.on('data',  (chunk) => {
                 if (lastChunk && lastChunk.length !== 0) {
                     chunk = Buffer.concat([lastChunk, chunk])
                 }
@@ -268,22 +268,22 @@ async function getAll(table, colums, cb, inMemoryDataBase, cb2, useSituation, fi
                     // sizeArray[rowNumber] = ++size;
                     // if (size === columnNumber) {
                     //     let row = db[rowNumber]
-                    //     await cb(row, rowNumber);
+                    //      cb(row, rowNumber);
                     //     db[rowNumber] = null //delete the finished row
                     // }
                     rowNumber++;
                 }
                 lastChunk = chunk.slice(cursor)
             });
-            rl.on('end', async () => {
+            rl.on('end',  () => {
                 filterFinished++;
                 if (filterFinished === filterCount) {
-                    await getData();
+                     getData();
                 }
             })
         });
         if (filterColumns.length === 0) {
-            await getData()
+             getData()
         }
         let bufferSize = finalColumns.length * 4;
         let res = []
@@ -294,7 +294,7 @@ async function getAll(table, colums, cb, inMemoryDataBase, cb2, useSituation, fi
                 let rl = readFromFile(table, col);
                 let rowNumber = 0;
                 let lastChunk;
-                rl.on('data', async (chunk) => {
+                rl.on('data',  (chunk) => {
                     if (lastChunk && lastChunk.length !== 0) {
                         chunk = Buffer.concat([lastChunk, chunk])
                     }

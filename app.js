@@ -10,7 +10,6 @@ const buffer_size = block_size << 2;
 // 6000000 can pass small
 // still need to pause the stream for fs await to work
 
-const MAX_SPACE = 600000 * 45;
 
 let builtFlag = false;
 const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
@@ -98,7 +97,25 @@ function build(path, tableName) {
                 cur = [];
             }
         }
-    } else {
+        // < 200mb calculate the real size
+    } else  if (fs.statSync(path).size < 20000000) {
+        write = function (item, index) {
+            let buf = bufArray[index];
+            let wl = wlArray[index];
+            let bufferIndex = bufferIndexArray[index];
+            buf.writeInt32LE(item, bufferIndex);
+            minArray[index] = Math.min(minArray[index], item);
+            maxArray[index] = Math.max(maxArray[index], item);
+            uniqueArray[index].add(item)
+            bufferIndex += 4;
+            if (bufferIndex === buffer_size) {
+                wl.write(buf, 'binary');
+                bufArray[index] = Buffer.allocUnsafe(buffer_size);
+                bufferIndex = 0
+            }
+            bufferIndexArray[index] = bufferIndex
+        }
+    }else{
         write = function (item, index) {
             let buf = bufArray[index];
             let wl = wlArray[index];
@@ -251,17 +268,15 @@ function query(input, queryNo) {
         nextQuery();
     });
 
-    async function next(joinNum, acc) {
+     function next(joinNum, acc) {
         if (joinNum < joins.length) {
             return join(joins[joinNum], acc, joinNum)
         }
     }
 
-    async function join([rel, joinTable, allJoin, cutleft, cutright, accIndex], acc = [], joinNum) {
-        const MAX_ROW = MAX_SPACE / (acc.length ? acc[0].length : 8)
-
+     function join([rel, joinTable, allJoin, cutleft, cutright, accIndex], acc = [], joinNum) {
         //console.log(cutleft,cutright)
-        async function pipe(data) {
+         function pipe(data) {
             if (data.length === 0) {
                 return
             }
@@ -300,7 +315,7 @@ function query(input, queryNo) {
                     }
                     acc = [];
                     const right = cutright << 2;
-                    get(joinTable, tables[joinTable], async (value, index) => {
+                    get(joinTable, tables[joinTable],  (value, index) => {
                         let key = value.readInt32LE(columns2[0]);
                         for (let colIndex = 1; colIndex < columns2.length; colIndex++) {
                             let column = columns2[colIndex];
@@ -332,15 +347,10 @@ function query(input, queryNo) {
                                     row1.copy(cur);
                                     value.copy(cur, row1.length, right);
                                     acc.push(cur);
-                                    if (acc.length > MAX_ROW) {
-                                        let data = acc;
-                                        acc = [];
-                                        await pipe(data);
-                                    }
                                 }
                             }
                         }
-                    }, inMemoryDataBase, async () => {
+                    }, inMemoryDataBase,  () => {
                         resolve(pipe(acc))
                     }, useSituation, filterByTable[joinTable])
                 }))
@@ -372,7 +382,7 @@ function query(input, queryNo) {
                         list.push(value);
                         db1.set(key, list)
                     }, inMemoryDataBase, () => {
-                        get(tableName2, tables[tableName2], async (value, index) => {
+                        get(tableName2, tables[tableName2],  (value, index) => {
                             let key = value.readInt32LE(columns2[0]);
                             for (let colIndex = 1; colIndex < columns2.length; colIndex++) {
                                 let column = columns2[colIndex];
@@ -404,17 +414,11 @@ function query(input, queryNo) {
                                         row1.copy(cur, 0, left);
                                         value.copy(cur, len1, right);
                                         acc.push(cur);
-                                        if (acc.length > MAX_ROW) {
-                                            let data = acc1;
-                                            acc = [];
-
-                                            await pipe(data);
-                                        }
                                     }
                                 }
 
                             }// if no same drop
-                        }, inMemoryDataBase, async () => {
+                        }, inMemoryDataBase,  () => {
                             resolve(pipe(acc))
                         }, useSituation, filterByTable[tableName2])
                     }, useSituation, filterByTable[tableName])
@@ -423,7 +427,7 @@ function query(input, queryNo) {
         } else {
             let {tableName, tableName2, column, column2} = allJoin;
             if (rel.length > 1) {
-                return new Promise((async resolve => {
+                return new Promise(( resolve => {
                     //console.log(accIndex,tableName,column,acc[0].length)
                     column = accIndex[tableName][column] << 2;
                     //console.error(column2)
@@ -492,17 +496,12 @@ function query(input, queryNo) {
                                     row1.copy(cur);
                                     value.copy(cur, row1.length, right);
                                     acc.push(cur);
-                                    if (acc.length > MAX_ROW) {
-                                        let data = acc;
-                                        acc = [];
-                                        await pipe(data);
-                                    }
                                 }
                             }
                         }
                         resolve(pipe(acc))
                     } else {
-                        get(tableName2, tables[tableName2], async (value, index) => {
+                        get(tableName2, tables[tableName2],  (value, index) => {
                                 let target = db1.get(value.readInt32LE(column2));
                                 if (target) {
                                     if (lastFlag) {
@@ -527,16 +526,11 @@ function query(input, queryNo) {
                                             row1.copy(cur);
                                             value.copy(cur, row1.length, right);
                                             acc.push(cur);
-                                            if (acc.length > MAX_ROW) {
-                                                let data = acc;
-                                                acc = [];
-                                                await pipe(data);
-                                            }
                                         }
                                     }
                                 }// if no same drop
                             },
-                            inMemoryDataBase, async () => {
+                            inMemoryDataBase,  () => {
                                 resolve(pipe(acc))
                             }, useSituation, filterByTable[tableName2])
                     }
@@ -559,7 +553,7 @@ function query(input, queryNo) {
                         let list = db1.get(val) || [];
                         list.push(value);
                         db1.set(val, list)
-                    }, inMemoryDataBase, async () => {
+                    }, inMemoryDataBase,  () => {
                         if (inMemoryDataBase[tableName2]) {
                             let colums = tables[tableName2];
                             let filters = filterByTable[tableName2] || [];
@@ -613,17 +607,12 @@ function query(input, queryNo) {
                                         row1.copy(cur, 0, left);
                                         value.copy(cur, len1, right);
                                         acc.push(cur);
-                                        if (acc.length > MAX_ROW) {
-                                            let data = acc;
-                                            acc = [];
-                                            await pipe(data);
-                                        }
                                     }
                                 }
                             }
                             resolve(pipe(acc))
                         } else {
-                            get(tableName2, tables[tableName2], async (value, index) => {
+                            get(tableName2, tables[tableName2],  (value, index) => {
                                 // if found the target, we just store the relationship we need
                                 let target = db1.get(value.readInt32LE(column2));
                                 if (target) {
@@ -650,15 +639,10 @@ function query(input, queryNo) {
                                             row1.copy(cur, 0, left);
                                             value.copy(cur, len1, right);
                                             acc.push(cur);
-                                            if (acc.length > MAX_ROW) {
-                                                let data = acc;
-                                                acc = [];
-                                                await pipe(data);
-                                            }
                                         }
                                     }
                                 }
-                            }, inMemoryDataBase, async () => {
+                            }, inMemoryDataBase,  () => {
                                 resolve(pipe(acc))
                             }, useSituation, filterByTable[tableName2])
                         }
