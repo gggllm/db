@@ -13,7 +13,7 @@ function readFromFile(table, col) {
 // cb2 is for running sequentially
 
 
- function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filters = []) {
+function get(table, colums, cb, inMemoryDataBase, cb2, useSituation, filters = []) {
     // analyze filter
     //colums = [...colums]
     // analyze filter
@@ -57,7 +57,7 @@ function readFromFile(table, col) {
             for (let i = 0; i < length2; i++) {
                 res.writeInt32LE(getColumn(row, finalColumns[i]), i * 4)
             }
-             cb(res, i);
+            cb(res, i);
             //ch.push(res)
         }
         //cache[table] = ch;
@@ -78,7 +78,7 @@ function readFromFile(table, col) {
             let rowNumber = 0;
             let colFilters = _.map(filters[col], 1);
             let lastChunk;
-            rl.on('data',  (chunk) => {
+            rl.on('data', (chunk) => {
                 if (lastChunk && lastChunk.length !== 0) {
                     chunk = Buffer.concat([lastChunk, chunk])
                 }
@@ -115,15 +115,15 @@ function readFromFile(table, col) {
                 }
                 lastChunk = chunk.slice(cursor)
             });
-            rl.on('end',  () => {
+            rl.on('end', () => {
                 filterFinished++;
                 if (filterFinished === filterCount) {
-                     getData();
+                    getData();
                 }
             })
         });
         if (filterColumns.length === 0) {
-             getData()
+            getData()
         }
         let bufferSize = finalColumns.length * 4;
 
@@ -133,7 +133,7 @@ function readFromFile(table, col) {
                 let rl = readFromFile(table, col);
                 let rowNumber = 0;
                 let lastChunk;
-                rl.on('data',  (chunk) => {
+                rl.on('data', (chunk) => {
                     if (lastChunk && lastChunk.length !== 0) {
                         chunk = Buffer.concat([lastChunk, chunk])
                     }
@@ -153,7 +153,7 @@ function readFromFile(table, col) {
                         sizeArray[rowNumber] = ++size;
                         setColumn(row, index, value);
                         if (size === columnNumber) {
-                             cb(row, rowNumber);
+                            cb(row, rowNumber);
                             db[rowNumber] = null //delete the finished row
                         }
                         rowNumber++;
@@ -171,7 +171,7 @@ function readFromFile(table, col) {
     }
 }
 
- function getAll(table, colums, cb, inMemoryDataBase, cb2, useSituation, filters = []) {
+function getAll(table, colums, cb, inMemoryDataBase, cb2, useSituation, filters = []) {
     // analyze filter
     //colums = [...colums]
     // analyze filter
@@ -238,7 +238,7 @@ function readFromFile(table, col) {
             let rowNumber = 0;
             let colFilters = _.map(filters[col], 1);
             let lastChunk;
-            rl.on('data',  (chunk) => {
+            rl.on('data', (chunk) => {
                 if (lastChunk && lastChunk.length !== 0) {
                     chunk = Buffer.concat([lastChunk, chunk])
                 }
@@ -275,15 +275,15 @@ function readFromFile(table, col) {
                 }
                 lastChunk = chunk.slice(cursor)
             });
-            rl.on('end',  () => {
+            rl.on('end', () => {
                 filterFinished++;
                 if (filterFinished === filterCount) {
-                     getData();
+                    getData();
                 }
             })
         });
         if (filterColumns.length === 0) {
-             getData()
+            getData()
         }
         let bufferSize = finalColumns.length * 4;
         let res = []
@@ -294,7 +294,7 @@ function readFromFile(table, col) {
                 let rl = readFromFile(table, col);
                 let rowNumber = 0;
                 let lastChunk;
-                rl.on('data',  (chunk) => {
+                rl.on('data', (chunk) => {
                     if (lastChunk && lastChunk.length !== 0) {
                         chunk = Buffer.concat([lastChunk, chunk])
                     }
@@ -383,4 +383,8 @@ function bufferForEach(buffer, cb) {
     }
 }
 
-module.exports = {get, write, arrayToBuffer, getColumn, bufferForEach, bufferToArray, clearCache, getAll};
+function sortInMemoryTable(table, offset) {
+    return _.sortBy(table, (item) => item.readInt32LE(offset))
+}
+
+module.exports = {get, write, arrayToBuffer, getColumn, bufferForEach, bufferToArray, clearCache, getAll,sortInMemoryTable};

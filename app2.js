@@ -6,11 +6,10 @@ const optimize = require('./optimizer');
 const readFileByLine = require('./readFileByLine');
 // multiply by 4 to make sure it can fit by integer without padding
 const block_size = (fs.statSync('./app.js').blksize || 4096);
-const buffer_size = block_size * 4;
+const buffer_size = block_size << 2;
 // 6000000 can pass small
 // still need to pause the stream for fs await to work
 
-const MAX_SPACE = 600000*38;
 
 let builtFlag = false;
 const letter = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
@@ -98,7 +97,25 @@ function build(path, tableName) {
                 cur = [];
             }
         }
-    } else {
+        // < 200mb calculate the real size
+    } else  if (fs.statSync(path).size < 20000000) {
+        write = function (item, index) {
+            let buf = bufArray[index];
+            let wl = wlArray[index];
+            let bufferIndex = bufferIndexArray[index];
+            buf.writeInt32LE(item, bufferIndex);
+            minArray[index] = Math.min(minArray[index], item);
+            maxArray[index] = Math.max(maxArray[index], item);
+            uniqueArray[index].add(item)
+            bufferIndex += 4;
+            if (bufferIndex === buffer_size) {
+                wl.write(buf, 'binary');
+                bufArray[index] = Buffer.allocUnsafe(buffer_size);
+                bufferIndex = 0
+            }
+            bufferIndexArray[index] = bufferIndex
+        }
+    }else{
         write = function (item, index) {
             let buf = bufArray[index];
             let wl = wlArray[index];
@@ -222,11 +239,11 @@ function addQuery(input, queryNo) {
 function query(input, queryNo) {
     let [select, from, where, filter] = parse(input);
     // get the join sequence and tables that is needed for extraction
-    let {joins, tables, tableIndex, filterByTable, useSituation, accIndex} = optimize(select, from, where, filter, metaDict,inMemoryDataBase);
+    let {joins, tables, tableIndex, filterByTable, useSituation, accIndex} = optimize(select, from, where, filter, metaDict, inMemoryDataBase);
     let result = select.map(() => 0);
     //console.error(select, from, where, filter,joins, tables, tableIndex, filterByTable, useSituation, accIndex)
     select = select.map(([table, col]) => {
-        return accIndex[table][col + ''] * 4
+        return accIndex[table][col + ''] << 2
     });
     next(0).then(() => {// current pipeline is over
         total--;
@@ -251,16 +268,15 @@ function query(input, queryNo) {
         nextQuery();
     });
 
-    async function next(joinNum, acc) {
+    function next(joinNum, acc) {
         if (joinNum < joins.length) {
             return join(joins[joinNum], acc, joinNum)
         }
     }
 
-    async function join([rel, joinTable, allJoin, cutleft, cutright, accIndex], acc=[], joinNum) {
-        const MAX_ROW=MAX_SPACE/ (acc.length?acc[0].length:8)
+    function join([rel, joinTable, allJoin, cutleft, cutright, accIndex], acc = [], joinNum) {
         //console.log(cutleft,cutright)
-        async function pipe(data) {
+        function pipe(data) {
             if (data.length === 0) {
                 return
             }
@@ -280,17 +296,17 @@ function query(input, queryNo) {
                     let columns2 = [];
                     for (let i = 0; i < allJoin.length; i++) {
                         let {tableName, tableName2, column, column2} = allJoin[i];
-                        columns.push(accIndex[tableName][column] * 4);
-                        columns2.push(tableIndex[tableName2][column2] * 4)
+                        columns.push(accIndex[tableName][column] << 2);
+                        columns2.push(tableIndex[tableName2][column2] << 2)
                     }
                     let db1 = new Map();
                     for (let index = 0; index < acc.length; index++) {
                         let row = acc[index];
-                        acc[index]=null
-                        let key = getColumn(row, columns[0]);
+                        acc[index] = null
+                        let key = row.readInt32LE(columns[0]);
                         for (let colIndex = 1; colIndex < columns.length; colIndex++) {
                             let column = columns[colIndex];
-                            key += ',' + getColumn(row, column)
+                            key += ',' + row.readInt32LE(column)
                         }
                         let arr = db1.get(key) || [];
                         db1.set(key, arr);
@@ -299,11 +315,16 @@ function query(input, queryNo) {
                     }
                     acc = [];
                     const right = cutright << 2;
-                    get(joinTable, tables[joinTable], async (value, index) => {
-                        let key = getColumn(value, columns2[0]);
+                    if(db1.size===0){
+                        resolve(pipe([]))
+                        return
+                    }
+                    const selectLength=select.map((val)=>val+right-db1.get(db1.keys().next().value)[0].length)
+                    get(joinTable, tables[joinTable],  (value, index) => {
+                        let key = value.readInt32LE(columns2[0]);
                         for (let colIndex = 1; colIndex < columns2.length; colIndex++) {
                             let column = columns2[colIndex];
-                            key += ',' + getColumn(value, column)
+                            key += ',' + value.readInt32LE(column)
                         }
                         // if found the target, we just store the relationship we need
                         let target = db1.get(key);
@@ -317,9 +338,9 @@ function query(input, queryNo) {
                                     for (let j = 0; j < len2; j++) {
                                         let col = select[j];
                                         if (col >= length) {
-                                            result[j] += getColumn(value, col - length + right)
+                                            result[j] += value.readInt32LE(selectLength[j])
                                         } else {
-                                            result[j] += getColumn(row1, col)
+                                            result[j] += row1.readInt32LE(col)
                                         }
                                     }
                                 }
@@ -331,15 +352,10 @@ function query(input, queryNo) {
                                     row1.copy(cur);
                                     value.copy(cur, row1.length, right);
                                     acc.push(cur);
-                                    if (acc.length > MAX_ROW) {
-                                        let data = acc;
-                                        acc = [];
-                                        await pipe(data);
-                                    }
                                 }
                             }
                         }
-                    }, inMemoryDataBase, async () => {
+                    }, inMemoryDataBase,  () => {
                         resolve(pipe(acc))
                     }, useSituation, filterByTable[joinTable])
                 }))
@@ -352,8 +368,8 @@ function query(input, queryNo) {
                     let columns2 = [];
                     for (let i = 0; i < allJoin.length; i++) {
                         let {tableName, tableName2, column, column2} = allJoin[i];
-                        columns.push(tableIndex[tableName][column] * 4);
-                        columns2.push(tableIndex[tableName2][column2] * 4)
+                        columns.push(tableIndex[tableName][column] << 2);
+                        columns2.push(tableIndex[tableName2][column2] << 2)
                     }
 
 
@@ -361,21 +377,26 @@ function query(input, queryNo) {
                     acc = [];
                     const left = cutleft << 2;
                     const right = cutright << 2;
+                    if(db1.size===0){
+                        resolve(pipe([]))
+                        return
+                    }
+                    const selectLength=select.map((val)=>val+right-db1.get(db1.keys().next().value)[0].length)
                     get(tableName, tables[tableName], (value, index) => {
-                        let key = getColumn(value, columns[0]);
+                        let key = value.readInt32LE(columns[0]);
                         for (let colIndex = 1; colIndex < columns.length; colIndex++) {
                             let column = columns[colIndex];
-                            key += ',' + getColumn(value, column)
+                            key += ',' + value.readInt32LE(column)
                         }
                         let list = db1.get(key) || [];
                         list.push(value);
                         db1.set(key, list)
                     }, inMemoryDataBase, () => {
-                        get(tableName2, tables[tableName2], async (value, index) => {
-                            let key = getColumn(value, columns2[0]);
+                        get(tableName2, tables[tableName2],  (value, index) => {
+                            let key = value.readInt32LE(columns2[0]);
                             for (let colIndex = 1; colIndex < columns2.length; colIndex++) {
                                 let column = columns2[colIndex];
-                                key += ',' + getColumn(value, column)
+                                key += ',' + value.readInt32LE(column)
                             }
                             // if found the target, we just store the relationship we need
                             let target = db1.get(key);
@@ -389,9 +410,9 @@ function query(input, queryNo) {
                                         for (let j = 0; j < len2; j++) {
                                             let col = select[j];
                                             if (col >= length) {
-                                                result[j] += getColumn(value, col - length + right)
+                                                result[j] += row1.readInt32LE(selectLength[j])
                                             } else {
-                                                result[j] += getColumn(row1, col)
+                                                result[j] += row1.readInt32LE(col)
                                             }
                                         }
                                     }
@@ -403,17 +424,11 @@ function query(input, queryNo) {
                                         row1.copy(cur, 0, left);
                                         value.copy(cur, len1, right);
                                         acc.push(cur);
-                                        if (acc.length > MAX_ROW) {
-                                            let data = acc1;
-                                            acc = [];
-
-                                            await pipe(data);
-                                        }
                                     }
                                 }
 
                             }// if no same drop
-                        }, inMemoryDataBase, async () => {
+                        }, inMemoryDataBase,  () => {
                             resolve(pipe(acc))
                         }, useSituation, filterByTable[tableName2])
                     }, useSituation, filterByTable[tableName])
@@ -422,53 +437,58 @@ function query(input, queryNo) {
         } else {
             let {tableName, tableName2, column, column2} = allJoin;
             if (rel.length > 1) {
-                return new Promise((async resolve => {
+                return new Promise(( resolve => {
                     //console.log(accIndex,tableName,column,acc[0].length)
-                    column = accIndex[tableName][column] * 4;
+                    column = accIndex[tableName][column] << 2;
                     //console.error(column2)
-                    let oriColumn2 = column2 * 4;
-                    column2 = tableIndex[tableName2][column2] * 4;
+                    let oriColumn2 = column2 << 2;
+                    column2 = tableIndex[tableName2][column2] << 2;
                     let db1 = new Map();
                     for (let index = 0; index < acc.length; index++) {
                         let row = acc[index];
-                        acc[index]=null
-                        let key = getColumn(row, column);
+                        acc[index] = null
+                        let key = row.readInt32LE(column);
                         let arr = db1.get(key) || [];
                         db1.set(key, arr);
                         arr.push(row)
                     }
                     acc = [];
                     const right = cutright << 2;
+                    if(db1.size===0){
+                        resolve(pipe([]))
+                        return
+                    }
+                    const selectLength=select.map((val)=>val+right-db1.get(db1.keys().next().value)[0].length)
                     if (inMemoryDataBase[tableName2]) {
                         let colums = tables[tableName2];
                         let filters = filterByTable[tableName2] || [];
-                        let finalColumns = colums.map((column, index) => column * 4);
+                        let finalColumns = colums.map((column, index) => column << 2);
                         let db = inMemoryDataBase[tableName2];
                         let length = db.length;
                         //let ch = [];
-                        filters = filters.map(([column, filter]) => [column * 4, filter]);
+                        filters = filters.map(([column, filter]) => [column << 2, filter]);
                         for (let i = 0; i < length; i++) {
                             let row = db[i];
                             let flag = false;
                             for (let i in filters) {
                                 let [column, filter] = filters[i];
-                                if (!filter(getColumn(row, column))) {
+                                if (!filter(row.readInt32LE(column))) {
                                     flag = true;
                                     break
                                 }
                             }
-                            if (!db1.has(getColumn(row, oriColumn2))) {
+                            if (!db1.has(row.readInt32LE(oriColumn2))) {
                                 continue
                             }
                             if (flag) {
                                 continue
                             }
                             let length2 = finalColumns.length;
-                            let value = Buffer.allocUnsafe(length2 * 4);
+                            let value = Buffer.allocUnsafe(length2 << 2);
                             for (let i = 0; i < length2; i++) {
-                                value.writeInt32LE(getColumn(row, finalColumns[i]), i * 4)
+                                value.writeInt32LE(row.readInt32LE(finalColumns[i]), i << 2)
                             }
-                            let target = db1.get(getColumn(value, column2));
+                            let target = db1.get(value.readInt32LE(column2));
                             if (lastFlag) {
                                 let len = target.length;
                                 for (let i = 0; i < len; i++) {
@@ -478,9 +498,9 @@ function query(input, queryNo) {
                                     for (let j = 0; j < len2; j++) {
                                         let col = select[j];
                                         if (col >= length) {
-                                            result[j] += getColumn(value, col - length + right)
+                                            result[j] += value.readInt32LE(selectLength[j])
                                         } else {
-                                            result[j] += getColumn(row1, col)
+                                            result[j] += row1.readInt32LE(col)
                                         }
                                     }
                                 }
@@ -491,18 +511,13 @@ function query(input, queryNo) {
                                     row1.copy(cur);
                                     value.copy(cur, row1.length, right);
                                     acc.push(cur);
-                                    if (acc.length > MAX_ROW) {
-                                        let data = acc;
-                                        acc = [];
-                                        await pipe(data);
-                                    }
                                 }
                             }
                         }
                         resolve(pipe(acc))
                     } else {
-                        get(tableName2, tables[tableName2], async (value, index) => {
-                                let target = db1.get(getColumn(value, column2));
+                        get(tableName2, tables[tableName2],  (value, index) => {
+                                let target = db1.get(value.readInt32LE(column2));
                                 if (target) {
                                     if (lastFlag) {
                                         let len = target.length;
@@ -513,9 +528,9 @@ function query(input, queryNo) {
                                             for (let j = 0; j < len2; j++) {
                                                 let col = select[j];
                                                 if (col >= length) {
-                                                    result[j] += getColumn(value, col - length + right)
+                                                    result[j] += value.readInt32LE(selectLength[j])
                                                 } else {
-                                                    result[j] += getColumn(row1, col)
+                                                    result[j] += row1.readInt32LE(col)
                                                 }
                                             }
                                         }
@@ -526,16 +541,11 @@ function query(input, queryNo) {
                                             row1.copy(cur);
                                             value.copy(cur, row1.length, right);
                                             acc.push(cur);
-                                            if (acc.length > MAX_ROW) {
-                                                let data = acc;
-                                                acc = [];
-                                                await pipe(data);
-                                            }
                                         }
                                     }
                                 }// if no same drop
                             },
-                            inMemoryDataBase, async () => {
+                            inMemoryDataBase,  () => {
                                 resolve(pipe(acc))
                             }, useSituation, filterByTable[tableName2])
                     }
@@ -544,51 +554,56 @@ function query(input, queryNo) {
                 return new Promise(resolve => {
 
                     //change column name to its actual position in a row
-                    let oriColumn = column * 4;
-                    let oriColumn2 = column2 * 4;
-                    column = tableIndex[tableName][column] * 4;
-                    column2 = tableIndex[tableName2][column2] * 4;
+                    let oriColumn = column << 2;
+                    let oriColumn2 = column2 << 2;
+                    column = tableIndex[tableName][column] << 2;
+                    column2 = tableIndex[tableName2][column2] << 2;
 
                     let db1 = new Map();
                     acc = [];
                     const left = cutleft << 2;
                     const right = cutright << 2;
                     get(tableName, tables[tableName], (value, index) => {
-                        let val = getColumn(value, column);
+                        let val = value.readInt32LE(column);
                         let list = db1.get(val) || [];
                         list.push(value);
                         db1.set(val, list)
-                    }, inMemoryDataBase, async () => {
+                    }, inMemoryDataBase,  () => {
+                        if(db1.size===0){
+                            resolve(pipe([]))
+                            return
+                        }
+                        const selectLength=select.map((val)=>val+right-db1.get(db1.keys().next().value)[0].length)
                         if (inMemoryDataBase[tableName2]) {
                             let colums = tables[tableName2];
                             let filters = filterByTable[tableName2] || [];
-                            let finalColumns = colums.map((column, index) => column * 4);
+                            let finalColumns = colums.map((column, index) => column << 2);
                             let db = inMemoryDataBase[tableName2];
                             let length = db.length;
                             //let ch = [];
-                            filters = filters.map(([column, filter]) => [column * 4, filter]);
+                            filters = filters.map(([column, filter]) => [column << 2, filter]);
                             for (let i = 0; i < length; i++) {
                                 let row = db[i];
                                 let flag = false;
                                 for (let i in filters) {
                                     let [column, filter] = filters[i];
-                                    if (!filter(getColumn(row, column))) {
+                                    if (!filter(row.readInt32LE(column))) {
                                         flag = true;
                                         break
                                     }
                                 }
-                                if (!db1.has(getColumn(row, oriColumn2))) {
+                                if (!db1.has(row.readInt32LE(oriColumn2))) {
                                     continue
                                 }
                                 if (flag) {
                                     continue
                                 }
                                 let length2 = finalColumns.length;
-                                let value = Buffer.allocUnsafe(length2 * 4);
+                                let value = Buffer.allocUnsafe(length2 << 2);
                                 for (let i = 0; i < length2; i++) {
-                                    value.writeInt32LE(getColumn(row, finalColumns[i]), i * 4)
+                                    value.writeInt32LE(row.readInt32LE(finalColumns[i]), i << 2)
                                 }
-                                let target = db1.get(getColumn(value, column2));
+                                let target = db1.get(value.readInt32LE(column2));
                                 if (lastFlag) {
                                     let len = target.length;
                                     for (let i = 0; i < len; i++) {
@@ -598,9 +613,9 @@ function query(input, queryNo) {
                                         for (let j = 0; j < len2; j++) {
                                             let col = select[j];
                                             if (col >= length) {
-                                                result[j] += getColumn(value, col - length + right)
+                                                result[j] += value.readInt32LE(selectLength[j])
                                             } else {
-                                                result[j] += getColumn(row1, col)
+                                                result[j] += row1.readInt32LE(col)
                                             }
                                         }
                                     }
@@ -612,19 +627,14 @@ function query(input, queryNo) {
                                         row1.copy(cur, 0, left);
                                         value.copy(cur, len1, right);
                                         acc.push(cur);
-                                        if (acc.length > MAX_ROW) {
-                                            let data = acc;
-                                            acc = [];
-                                            await pipe(data);
-                                        }
                                     }
                                 }
                             }
                             resolve(pipe(acc))
                         } else {
-                            get(tableName2, tables[tableName2], async (value, index) => {
+                            get(tableName2, tables[tableName2],  (value, index) => {
                                 // if found the target, we just store the relationship we need
-                                let target = db1.get(getColumn(value, column2));
+                                let target = db1.get(value.readInt32LE(column2));
                                 if (target) {
                                     if (lastFlag) {
                                         let len = target.length;
@@ -635,9 +645,9 @@ function query(input, queryNo) {
                                             for (let j = 0; j < len2; j++) {
                                                 let col = select[j];
                                                 if (col >= length) {
-                                                    result[j] += getColumn(value, col - length + right)
+                                                    result[j] += value.readInt32LE(selectLength[j])
                                                 } else {
-                                                    result[j] += getColumn(row1, col)
+                                                    result[j] += row1.readInt32LE(col)
                                                 }
                                             }
                                         }
@@ -649,15 +659,10 @@ function query(input, queryNo) {
                                             row1.copy(cur, 0, left);
                                             value.copy(cur, len1, right);
                                             acc.push(cur);
-                                            if (acc.length > MAX_ROW) {
-                                                let data = acc;
-                                                acc = [];
-                                                await pipe(data);
-                                            }
                                         }
                                     }
                                 }
-                            }, inMemoryDataBase, async () => {
+                            }, inMemoryDataBase,  () => {
                                 resolve(pipe(acc))
                             }, useSituation, filterByTable[tableName2])
                         }

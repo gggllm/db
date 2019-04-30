@@ -1,6 +1,6 @@
 const _ = require('lodash');
 const fs = require('fs');
-const {get, write, arrayToBuffer, bufferForEach, getColumn, bufferToArray, clearCache} = require('./util');
+const {get, write, arrayToBuffer, bufferForEach, getColumn, bufferToArray, clearCache, sortInMemoryTable} = require('./util');
 const parse = require('./parser');
 const optimize = require('./optimizer');
 const readFileByLine = require('./readFileByLine');
@@ -32,9 +32,10 @@ let q = '';
 let queryNo = 0;
 let queryResult = [];
 let buildCountTotal = 0;
-
+let start
 function buildAll(line) {
     //build index
+    start=new Date()
     let lines = line.split(',');
     buildCountTotal = lines.length;
     lines.forEach((path, index) => {
@@ -98,7 +99,7 @@ function build(path, tableName) {
             }
         }
         // < 200mb calculate the real size
-    } else  if (fs.statSync(path).size < 20000000) {
+    } else if (fs.statSync(path).size < 20000000) {
         write = function (item, index) {
             let buf = bufArray[index];
             let wl = wlArray[index];
@@ -115,7 +116,7 @@ function build(path, tableName) {
             }
             bufferIndexArray[index] = bufferIndex
         }
-    }else{
+    } else {
         write = function (item, index) {
             let buf = bufArray[index];
             let wl = wlArray[index];
@@ -207,6 +208,7 @@ function build(path, tableName) {
                         //        FROM A, C, D, E
                         //        WHERE C.c1 = E.c0 AND A.c2 = C.c0 AND A.c3 = D.c0 AND C.c2 = D.c2
                         //          AND D.c3 > -7349;`, 0)
+                        console.error(new Date()-start)
                         nextQuery()
                     }
                 }
@@ -258,7 +260,7 @@ function query(input, queryNo) {
             result = result.map(() => '')
         }
         queryResult[queryNo] = result.join(',');
-        console.error(queryNo, result);
+        //console.error(queryNo, result);
         if (total === 0) {
             queryResult.forEach((value) => {
                 process.stdout.write(value + '\n')
@@ -268,15 +270,15 @@ function query(input, queryNo) {
         nextQuery();
     });
 
-     function next(joinNum, acc) {
+    function next(joinNum, acc) {
         if (joinNum < joins.length) {
             return join(joins[joinNum], acc, joinNum)
         }
     }
 
-     function join([rel, joinTable, allJoin, cutleft, cutright, accIndex], acc = [], joinNum) {
+    function join([rel, joinTable, allJoin, cutleft, cutright, accIndex], acc = [], joinNum) {
         //console.log(cutleft,cutright)
-         function pipe(data) {
+        function pipe(data) {
             if (data.length === 0) {
                 return
             }
@@ -315,21 +317,16 @@ function query(input, queryNo) {
                     }
                     acc = [];
                     const right = cutright << 2;
-                    if(db1.size===0){
-                        resolve(pipe([]))
-                        return
-                    }
-                    const selectLength=select.map((val)=>val+right-db1.get(db1.keys().next().value)[0].length)
-                    get(joinTable, tables[joinTable],  (value, index) => {
-                        let key = value.readInt32LE(columns2[0]);
-                        for (let colIndex = 1; colIndex < columns2.length; colIndex++) {
-                            let column = columns2[colIndex];
-                            key += ',' + value.readInt32LE(column)
-                        }
-                        // if found the target, we just store the relationship we need
-                        let target = db1.get(key);
-                        if (target) {
-                            if (lastFlag) {
+                    if (lastFlag) {
+                        get(joinTable, tables[joinTable], (value, index) => {
+                            let key = value.readInt32LE(columns2[0]);
+                            for (let colIndex = 1; colIndex < columns2.length; colIndex++) {
+                                let column = columns2[colIndex];
+                                key += ',' + value.readInt32LE(column)
+                            }
+                            // if found the target, we just store the relationship we need
+                            let target = db1.get(key);
+                            if (target) {
                                 let len = target.length;
                                 for (let i = 0; i < len; i++) {
                                     let row1 = target[i];
@@ -338,14 +335,26 @@ function query(input, queryNo) {
                                     for (let j = 0; j < len2; j++) {
                                         let col = select[j];
                                         if (col >= length) {
-                                            result[j] += value.readInt32LE(selectLength[j])
+                                            result[j] += value.readInt32LE(col - length + right)
                                         } else {
                                             result[j] += row1.readInt32LE(col)
                                         }
                                     }
                                 }
-
-                            } else {
+                            }
+                        }, inMemoryDataBase, () => {
+                            resolve(pipe(acc))
+                        }, useSituation, filterByTable[joinTable])
+                    } else {
+                        get(joinTable, tables[joinTable], (value, index) => {
+                            let key = value.readInt32LE(columns2[0]);
+                            for (let colIndex = 1; colIndex < columns2.length; colIndex++) {
+                                let column = columns2[colIndex];
+                                key += ',' + value.readInt32LE(column)
+                            }
+                            // if found the target, we just store the relationship we need
+                            let target = db1.get(key);
+                            if (target) {
                                 for (let i = 0; i < target.length; i++) {
                                     let row1 = target[i];
                                     let cur = Buffer.allocUnsafe(row1.length + value.length - right);
@@ -354,10 +363,10 @@ function query(input, queryNo) {
                                     acc.push(cur);
                                 }
                             }
-                        }
-                    }, inMemoryDataBase,  () => {
-                        resolve(pipe(acc))
-                    }, useSituation, filterByTable[joinTable])
+                        }, inMemoryDataBase, () => {
+                            resolve(pipe(acc))
+                        }, useSituation, filterByTable[joinTable])
+                    }
                 }))
             } else {
                 let tableName = rel[0];
@@ -377,11 +386,6 @@ function query(input, queryNo) {
                     acc = [];
                     const left = cutleft << 2;
                     const right = cutright << 2;
-                    if(db1.size===0){
-                        resolve(pipe([]))
-                        return
-                    }
-                    const selectLength=select.map((val)=>val+right-db1.get(db1.keys().next().value)[0].length)
                     get(tableName, tables[tableName], (value, index) => {
                         let key = value.readInt32LE(columns[0]);
                         for (let colIndex = 1; colIndex < columns.length; colIndex++) {
@@ -392,16 +396,16 @@ function query(input, queryNo) {
                         list.push(value);
                         db1.set(key, list)
                     }, inMemoryDataBase, () => {
-                        get(tableName2, tables[tableName2],  (value, index) => {
-                            let key = value.readInt32LE(columns2[0]);
-                            for (let colIndex = 1; colIndex < columns2.length; colIndex++) {
-                                let column = columns2[colIndex];
-                                key += ',' + value.readInt32LE(column)
-                            }
-                            // if found the target, we just store the relationship we need
-                            let target = db1.get(key);
-                            if (target) {
-                                if (lastFlag) {
+                        if (lastFlag) {
+                            get(tableName2, tables[tableName2], (value, index) => {
+                                let key = value.readInt32LE(columns2[0]);
+                                for (let colIndex = 1; colIndex < columns2.length; colIndex++) {
+                                    let column = columns2[colIndex];
+                                    key += ',' + value.readInt32LE(column)
+                                }
+                                // if found the target, we just store the relationship we need
+                                let target = db1.get(key);
+                                if (target) {
                                     let len = target.length;
                                     for (let i = 0; i < len; i++) {
                                         let row1 = target[i];
@@ -410,13 +414,26 @@ function query(input, queryNo) {
                                         for (let j = 0; j < len2; j++) {
                                             let col = select[j];
                                             if (col >= length) {
-                                                result[j] += row1.readInt32LE(selectLength[j])
+                                                result[j] += row1.readInt32LE(col - length + right)
                                             } else {
                                                 result[j] += row1.readInt32LE(col)
                                             }
                                         }
                                     }
-                                } else {
+                                }// if no same drop
+                            }, inMemoryDataBase, () => {
+                                resolve(pipe(acc))
+                            }, useSituation, filterByTable[tableName2])
+                        } else {
+                            get(tableName2, tables[tableName2], (value, index) => {
+                                let key = value.readInt32LE(columns2[0]);
+                                for (let colIndex = 1; colIndex < columns2.length; colIndex++) {
+                                    let column = columns2[colIndex];
+                                    key += ',' + value.readInt32LE(column)
+                                }
+                                // if found the target, we just store the relationship we need
+                                let target = db1.get(key);
+                                if (target) {
                                     for (let i = 0; i < target.length; i++) {
                                         let row1 = target[i];
                                         let len1 = row1.length - left;
@@ -425,19 +442,18 @@ function query(input, queryNo) {
                                         value.copy(cur, len1, right);
                                         acc.push(cur);
                                     }
-                                }
-
-                            }// if no same drop
-                        }, inMemoryDataBase,  () => {
-                            resolve(pipe(acc))
-                        }, useSituation, filterByTable[tableName2])
+                                }// if no same drop
+                            }, inMemoryDataBase, () => {
+                                resolve(pipe(acc))
+                            }, useSituation, filterByTable[tableName2])
+                        }
                     }, useSituation, filterByTable[tableName])
                 })
             }
         } else {
             let {tableName, tableName2, column, column2} = allJoin;
             if (rel.length > 1) {
-                return new Promise(( resolve => {
+                return new Promise((resolve => {
                     //console.log(accIndex,tableName,column,acc[0].length)
                     column = accIndex[tableName][column] << 2;
                     //console.error(column2)
@@ -454,132 +470,13 @@ function query(input, queryNo) {
                     }
                     acc = [];
                     const right = cutright << 2;
-                    if(db1.size===0){
-                        resolve(pipe([]))
-                        return
-                    }
-                    const selectLength=select.map((val)=>val+right-db1.get(db1.keys().next().value)[0].length)
-                    if (inMemoryDataBase[tableName2]) {
-                        let colums = tables[tableName2];
-                        let filters = filterByTable[tableName2] || [];
-                        let finalColumns = colums.map((column, index) => column << 2);
-                        let db = inMemoryDataBase[tableName2];
-                        let length = db.length;
-                        //let ch = [];
-                        filters = filters.map(([column, filter]) => [column << 2, filter]);
-                        for (let i = 0; i < length; i++) {
-                            let row = db[i];
-                            let flag = false;
-                            for (let i in filters) {
-                                let [column, filter] = filters[i];
-                                if (!filter(row.readInt32LE(column))) {
-                                    flag = true;
-                                    break
-                                }
-                            }
-                            if (!db1.has(row.readInt32LE(oriColumn2))) {
-                                continue
-                            }
-                            if (flag) {
-                                continue
-                            }
-                            let length2 = finalColumns.length;
-                            let value = Buffer.allocUnsafe(length2 << 2);
-                            for (let i = 0; i < length2; i++) {
-                                value.writeInt32LE(row.readInt32LE(finalColumns[i]), i << 2)
-                            }
-                            let target = db1.get(value.readInt32LE(column2));
-                            if (lastFlag) {
-                                let len = target.length;
-                                for (let i = 0; i < len; i++) {
-                                    let row1 = target[i];
-                                    let length = row1.length;
-                                    let len2 = select.length;
-                                    for (let j = 0; j < len2; j++) {
-                                        let col = select[j];
-                                        if (col >= length) {
-                                            result[j] += value.readInt32LE(selectLength[j])
-                                        } else {
-                                            result[j] += row1.readInt32LE(col)
-                                        }
-                                    }
-                                }
-                            } else {
-                                for (let i = 0; i < target.length; i++) {
-                                    let row1 = target[i];
-                                    let cur = Buffer.allocUnsafe(row1.length + value.length - right);
-                                    row1.copy(cur);
-                                    value.copy(cur, row1.length, right);
-                                    acc.push(cur);
-                                }
-                            }
-                        }
-                        resolve(pipe(acc))
-                    } else {
-                        get(tableName2, tables[tableName2],  (value, index) => {
-                                let target = db1.get(value.readInt32LE(column2));
-                                if (target) {
-                                    if (lastFlag) {
-                                        let len = target.length;
-                                        for (let i = 0; i < len; i++) {
-                                            let row1 = target[i];
-                                            let length = row1.length;
-                                            let len2 = select.length;
-                                            for (let j = 0; j < len2; j++) {
-                                                let col = select[j];
-                                                if (col >= length) {
-                                                    result[j] += value.readInt32LE(selectLength[j])
-                                                } else {
-                                                    result[j] += row1.readInt32LE(col)
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        for (let i = 0; i < target.length; i++) {
-                                            let row1 = target[i];
-                                            let cur = Buffer.allocUnsafe(row1.length + value.length - right);
-                                            row1.copy(cur);
-                                            value.copy(cur, row1.length, right);
-                                            acc.push(cur);
-                                        }
-                                    }
-                                }// if no same drop
-                            },
-                            inMemoryDataBase,  () => {
-                                resolve(pipe(acc))
-                            }, useSituation, filterByTable[tableName2])
-                    }
-                }))
-            } else {
-                return new Promise(resolve => {
-
-                    //change column name to its actual position in a row
-                    let oriColumn = column << 2;
-                    let oriColumn2 = column2 << 2;
-                    column = tableIndex[tableName][column] << 2;
-                    column2 = tableIndex[tableName2][column2] << 2;
-
-                    let db1 = new Map();
-                    acc = [];
-                    const left = cutleft << 2;
-                    const right = cutright << 2;
-                    get(tableName, tables[tableName], (value, index) => {
-                        let val = value.readInt32LE(column);
-                        let list = db1.get(val) || [];
-                        list.push(value);
-                        db1.set(val, list)
-                    }, inMemoryDataBase,  () => {
-                        if(db1.size===0){
-                            resolve(pipe([]))
-                            return
-                        }
-                        const selectLength=select.map((val)=>val+right-db1.get(db1.keys().next().value)[0].length)
+                    if (lastFlag) {
                         if (inMemoryDataBase[tableName2]) {
                             let colums = tables[tableName2];
                             let filters = filterByTable[tableName2] || [];
                             let finalColumns = colums.map((column, index) => column << 2);
                             let db = inMemoryDataBase[tableName2];
-                            let length = db.length;
+                            let length = db.length
                             //let ch = [];
                             filters = filters.map(([column, filter]) => [column << 2, filter]);
                             for (let i = 0; i < length; i++) {
@@ -604,7 +501,155 @@ function query(input, queryNo) {
                                     value.writeInt32LE(row.readInt32LE(finalColumns[i]), i << 2)
                                 }
                                 let target = db1.get(value.readInt32LE(column2));
-                                if (lastFlag) {
+                                let len = target.length;
+                                for (let i = 0; i < len; i++) {
+                                    let row1 = target[i];
+                                    let length = row1.length;
+                                    let len2 = select.length;
+                                    for (let j = 0; j < len2; j++) {
+                                        let col = select[j];
+                                        if (col >= length) {
+                                            result[j] += value.readInt32LE(col - length + right)
+                                        } else {
+                                            result[j] += row1.readInt32LE(col)
+                                        }
+                                    }
+                                }
+                            }
+                            resolve(pipe(acc))
+                        } else {
+                            get(tableName2, tables[tableName2], (value, index) => {
+                                    let target = db1.get(value.readInt32LE(column2));
+                                    if (target) {
+                                        let len = target.length;
+                                        for (let i = 0; i < len; i++) {
+                                            let row1 = target[i];
+                                            let length = row1.length;
+                                            let len2 = select.length;
+                                            for (let j = 0; j < len2; j++) {
+                                                let col = select[j];
+                                                if (col >= length) {
+                                                    result[j] += value.readInt32LE(col - length + right)
+                                                } else {
+                                                    result[j] += row1.readInt32LE(col)
+                                                }
+                                            }
+                                        }
+                                    }// if no same drop
+                                },
+                                inMemoryDataBase, () => {
+                                    resolve(pipe(acc))
+                                }, useSituation, filterByTable[tableName2])
+                        }
+                    } else {
+                        if (inMemoryDataBase[tableName2]) {
+                            let colums = tables[tableName2];
+                            let filters = filterByTable[tableName2] || [];
+                            let finalColumns = colums.map((column, index) => column << 2);
+                            let db = inMemoryDataBase[tableName2];
+                            let length = db.length
+                            //let ch = [];
+                            filters = filters.map(([column, filter]) => [column << 2, filter]);
+                            for (let i = 0; i < length; i++) {
+                                let row = db[i];
+                                let flag = false;
+                                for (let i in filters) {
+                                    let [column, filter] = filters[i];
+                                    if (!filter(row.readInt32LE(column))) {
+                                        flag = true;
+                                        break
+                                    }
+                                }
+                                if (!db1.has(row.readInt32LE(oriColumn2))) {
+                                    continue
+                                }
+                                if (flag) {
+                                    continue
+                                }
+                                let length2 = finalColumns.length;
+                                let value = Buffer.allocUnsafe(length2 << 2);
+                                for (let i = 0; i < length2; i++) {
+                                    value.writeInt32LE(row.readInt32LE(finalColumns[i]), i << 2)
+                                }
+                                let target = db1.get(value.readInt32LE(column2));
+                                for (let i = 0; i < target.length; i++) {
+                                    let row1 = target[i];
+                                    let cur = Buffer.allocUnsafe(row1.length + value.length - right);
+                                    row1.copy(cur);
+                                    value.copy(cur, row1.length, right);
+                                    acc.push(cur);
+                                }
+                            }
+                            resolve(pipe(acc))
+                        } else {
+                            get(tableName2, tables[tableName2], (value, index) => {
+                                    let target = db1.get(value.readInt32LE(column2));
+                                    if (target) {
+                                        for (let i = 0; i < target.length; i++) {
+                                            let row1 = target[i];
+                                            let cur = Buffer.allocUnsafe(row1.length + value.length - right);
+                                            row1.copy(cur);
+                                            value.copy(cur, row1.length, right);
+                                            acc.push(cur);
+                                        }
+                                    }// if no same drop
+                                },
+                                inMemoryDataBase, () => {
+                                    resolve(pipe(acc))
+                                }, useSituation, filterByTable[tableName2])
+                        }
+                    }
+                }))
+            } else {
+                return new Promise(resolve => {
+
+                    //change column name to its actual position in a row
+                    let oriColumn = column << 2;
+                    let oriColumn2 = column2 << 2;
+                    column = tableIndex[tableName][column] << 2;
+                    column2 = tableIndex[tableName2][column2] << 2;
+
+                    let db1 = new Map();
+                    acc = [];
+                    const left = cutleft << 2;
+                    const right = cutright << 2;
+                    get(tableName, tables[tableName], (value, index) => {
+                        let val = value.readInt32LE(column);
+                        let list = db1.get(val) || [];
+                        list.push(value);
+                        db1.set(val, list)
+                    }, inMemoryDataBase, () => {
+                        if (lastFlag) {
+                            if (inMemoryDataBase[tableName2]) {
+                                let colums = tables[tableName2];
+                                let filters = filterByTable[tableName2] || [];
+                                let finalColumns = colums.map((column, index) => column << 2);
+                                let db = inMemoryDataBase[tableName2];
+                                let length = db.length;
+                                //let ch = [];
+                                filters = filters.map(([column, filter]) => [column << 2, filter]);
+                                for (let i = 0; i < length; i++) {
+                                    let row = db[i];
+                                    let flag = false;
+                                    for (let i in filters) {
+                                        let [column, filter] = filters[i];
+                                        if (!filter(row.readInt32LE(column))) {
+                                            flag = true;
+                                            break
+                                        }
+                                    }
+                                    if (!db1.has(row.readInt32LE(oriColumn2))) {
+                                        continue
+                                    }
+                                    if (flag) {
+                                        continue
+                                    }
+                                    let length2 = finalColumns.length;
+                                    let value = Buffer.allocUnsafe(length2 << 2);
+                                    for (let i = 0; i < length2; i++) {
+                                        value.writeInt32LE(row.readInt32LE(finalColumns[i]), i << 2)
+                                    }
+                                    let target = db1.get(value.readInt32LE(column2));
                                     let len = target.length;
                                     for (let i = 0; i < len; i++) {
                                         let row1 = target[i];
@@ -613,13 +658,70 @@ function query(input, queryNo) {
                                         for (let j = 0; j < len2; j++) {
                                             let col = select[j];
                                             if (col >= length) {
-                                                result[j] += value.readInt32LE(selectLength[j])
+                                                result[j] += value.readInt32LE(col - length + right)
                                             } else {
                                                 result[j] += row1.readInt32LE(col)
                                             }
                                         }
                                     }
-                                } else {
+                                }
+                                resolve(pipe(acc))
+                            } else {
+                                get(tableName2, tables[tableName2], (value, index) => {
+                                    // if found the target, we just store the relationship we need
+                                    let target = db1.get(value.readInt32LE(column2));
+                                    if (target) {
+                                        let len = target.length;
+                                        for (let i = 0; i < len; i++) {
+                                            let row1 = target[i];
+                                            let length = row1.length;
+                                            let len2 = select.length;
+                                            for (let j = 0; j < len2; j++) {
+                                                let col = select[j];
+                                                if (col >= length) {
+                                                    result[j] += value.readInt32LE(col - length + right)
+                                                } else {
+                                                    result[j] += row1.readInt32LE(col)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }, inMemoryDataBase, () => {
+                                    resolve(pipe(acc))
+                                }, useSituation, filterByTable[tableName2])
+                            }
+                        } else {
+                            if (inMemoryDataBase[tableName2]) {
+                                let colums = tables[tableName2];
+                                let filters = filterByTable[tableName2] || [];
+                                let finalColumns = colums.map((column, index) => column << 2);
+                                let db = inMemoryDataBase[tableName2];
+                                let length = db.length;
+                                //let ch = [];
+                                filters = filters.map(([column, filter]) => [column << 2, filter]);
+                                for (let i = 0; i < length; i++) {
+                                    let row = db[i];
+                                    let flag = false;
+                                    for (let i in filters) {
+                                        let [column, filter] = filters[i];
+                                        if (!filter(row.readInt32LE(column))) {
+                                            flag = true;
+                                            break
+                                        }
+                                    }
+                                    if (!db1.has(row.readInt32LE(oriColumn2))) {
+                                        continue
+                                    }
+                                    if (flag) {
+                                        continue
+                                    }
+                                    let length2 = finalColumns.length;
+                                    let value = Buffer.allocUnsafe(length2 << 2);
+                                    for (let i = 0; i < length2; i++) {
+                                        value.writeInt32LE(row.readInt32LE(finalColumns[i]), i << 2)
+                                    }
+                                    let target = db1.get(value.readInt32LE(column2));
+
                                     for (let i = 0; i < target.length; i++) {
                                         let row1 = target[i];
                                         let len1 = row1.length - left;
@@ -629,29 +731,13 @@ function query(input, queryNo) {
                                         acc.push(cur);
                                     }
                                 }
-                            }
-                            resolve(pipe(acc))
-                        } else {
-                            get(tableName2, tables[tableName2],  (value, index) => {
-                                // if found the target, we just store the relationship we need
-                                let target = db1.get(value.readInt32LE(column2));
-                                if (target) {
-                                    if (lastFlag) {
-                                        let len = target.length;
-                                        for (let i = 0; i < len; i++) {
-                                            let row1 = target[i];
-                                            let length = row1.length;
-                                            let len2 = select.length;
-                                            for (let j = 0; j < len2; j++) {
-                                                let col = select[j];
-                                                if (col >= length) {
-                                                    result[j] += value.readInt32LE(selectLength[j])
-                                                } else {
-                                                    result[j] += row1.readInt32LE(col)
-                                                }
-                                            }
-                                        }
-                                    } else {
+                                resolve(pipe(acc))
+                            } else {
+                                get(tableName2, tables[tableName2], (value, index) => {
+                                    // if found the target, we just store the relationship we need
+                                    let target = db1.get(value.readInt32LE(column2));
+                                    if (target) {
+
                                         for (let i = 0; i < target.length; i++) {
                                             let row1 = target[i];
                                             let len1 = row1.length - left;
@@ -661,10 +747,10 @@ function query(input, queryNo) {
                                             acc.push(cur);
                                         }
                                     }
-                                }
-                            }, inMemoryDataBase,  () => {
-                                resolve(pipe(acc))
-                            }, useSituation, filterByTable[tableName2])
+                                }, inMemoryDataBase, () => {
+                                    resolve(pipe(acc))
+                                }, useSituation, filterByTable[tableName2])
+                            }
                         }
                     }, useSituation, filterByTable[tableName])
                 })
