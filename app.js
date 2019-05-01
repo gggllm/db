@@ -203,7 +203,7 @@ function build(path, tableName) {
                 if (columnFinishCount === columnNumber) {
                     buildCount++;
                     if (buildCount === buildCountTotal) {
-                        builtFlag = true;p
+                        builtFlag = true
                         // query(`SELECT SUM(A.c40), SUM(E.c4), SUM(D.c1)
                         //        FROM A, C, D, E
                         //        WHERE C.c1 = E.c0 AND A.c2 = C.c0 AND A.c3 = D.c0 AND C.c2 = D.c2
