@@ -279,7 +279,6 @@ function query(input, queryNo) {
     function join([rel, joinTable, allJoin, cutleft, cutright, accIndex], acc = [], joinNum) {
         //console.log(cutleft,cutright)
         function pipe(data) {
-            global.gc && global.gc()
             if (data.length === 0) {
                 return
             }
